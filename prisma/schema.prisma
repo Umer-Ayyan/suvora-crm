@@ -1,27 +1,60 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  role      String   @default("employee")
+model Lead {
+  id      String  @id @default(cuid())
+  name    String
+  company String?
+  email   String?
+  source  String
+  status  String  @default("new")
+  budget  String?
+  notes   String?
+
+  followUpDate DateTime?
+  priority     String?   @default("medium")
+
   createdAt DateTime @default(now())
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+
+  leadNotes LeadNote[]
 }
 
-model Lead {
+model LeadNote {
   id        String   @id @default(cuid())
-  name      String
-  company   String?
-  email     String?
-  source    String
-  status    String   @default("new")
-  budget    String?
-  notes     String?
+  note      String
   createdAt DateTime @default(now())
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  action      String
+  description String
+  createdAt   DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+}
+
+model User {
+  id         String   @id @default(cuid())
+  name       String
+  employeeId String   @unique
+  password   String
+  role       String   @default("employee")
+  createdAt  DateTime @default(now())
+
+  leads        Lead[]
+  activityLogs ActivityLog[]
 }
