@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import Link from "next/link";
 
 async function getAdminStats() {
   const totalLeads = await prisma.lead.count();
@@ -25,28 +26,72 @@ async function getAdminStats() {
       },
     });
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(
+    tomorrow.getDate() + 1
+  );
+
+  const todaysFollowUps =
+    await prisma.lead.findMany({
+      where: {
+        followUpDate: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+      orderBy: {
+        followUpDate: "asc",
+      },
+      include: {
+        createdBy: true,
+      },
+      take: 10,
+    });
+
+  const overdueLeads =
+    await prisma.lead.findMany({
+      where: {
+        followUpDate: {
+          lt: today,
+        },
+
+        NOT: {
+          status: "won",
+        },
+      },
+      orderBy: {
+        followUpDate: "asc",
+      },
+      include: {
+        createdBy: true,
+      },
+      take: 10,
+    });
+
   return {
     totalLeads,
     proposalSent,
     closedDeals,
     employeeStats,
+    todaysFollowUps,
+    overdueLeads,
   };
 }
 
 async function getEmployeeStats(
   employeeId: string
 ) {
-  const user =
-    await prisma.user.findUnique({
-      where: {
-        employeeId,
-      },
-      include: {
-        leads: true,
-      },
-    });
-
-  return user;
+  return prisma.user.findUnique({
+    where: {
+      employeeId,
+    },
+    include: {
+      leads: true,
+    },
+  });
 }
 
 export default async function DashboardPage() {
@@ -57,8 +102,8 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const role = (session.user as any)
-    .role;
+  const role =
+    (session.user as any).role;
 
   if (role === "employee") {
     const employee =
@@ -76,14 +121,14 @@ export default async function DashboardPage() {
 
     const proposalSent =
       employee.leads.filter(
-        (lead) =>
+        (lead: any) =>
           lead.status ===
           "proposal"
       ).length;
 
     const wonDeals =
       employee.leads.filter(
-        (lead) =>
+        (lead: any) =>
           lead.status === "won"
       ).length;
 
@@ -96,6 +141,38 @@ export default async function DashboardPage() {
           ).toFixed(1)
         : "0";
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow =
+      new Date(today);
+
+    tomorrow.setDate(
+      tomorrow.getDate() + 1
+    );
+
+    const todaysFollowUps =
+      employee.leads.filter(
+        (lead: any) =>
+          lead.followUpDate &&
+          new Date(
+            lead.followUpDate
+          ) >= today &&
+          new Date(
+            lead.followUpDate
+          ) < tomorrow
+      );
+
+    const overdueLeads =
+      employee.leads.filter(
+        (lead: any) =>
+          lead.followUpDate &&
+          new Date(
+            lead.followUpDate
+          ) < today &&
+          lead.status !== "won"
+      );
+
     return (
       <main className="min-h-screen bg-zinc-950 text-white p-10">
         <div className="max-w-7xl mx-auto">
@@ -103,7 +180,7 @@ export default async function DashboardPage() {
             My Dashboard
           </h1>
 
-          <div className="grid md:grid-cols-4 gap-6">
+          <div className="grid md:grid-cols-6 gap-6">
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
               <p className="text-zinc-400">
                 My Leads
@@ -143,34 +220,111 @@ export default async function DashboardPage() {
                 {conversionRate}%
               </h2>
             </div>
+
+            <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
+              <p className="text-zinc-400">
+                Follow-ups Today
+              </p>
+
+              <h2 className="text-5xl font-bold mt-3">
+                {
+                  todaysFollowUps.length
+                }
+              </h2>
+            </div>
+
+            <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
+              <p className="text-zinc-400">
+                Overdue
+              </p>
+
+              <h2 className="text-5xl font-bold mt-3 text-red-400">
+                {
+                  overdueLeads.length
+                }
+              </h2>
+            </div>
           </div>
 
-          <div className="mt-12 bg-zinc-900 border border-white/10 rounded-3xl p-8">
-            <h2 className="text-2xl font-bold mb-6">
-              My Recent Leads
-            </h2>
+          <div className="mt-12 grid md:grid-cols-2 gap-6">
+            <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
+              <h2 className="text-2xl font-bold mb-6">
+                Today's Follow-ups
+              </h2>
 
-            <div className="space-y-4">
-              {employee.leads
-                .slice(0, 10)
-                .map((lead) => (
-                  <div
-                    key={lead.id}
-                    className="border border-white/10 rounded-2xl p-4"
-                  >
-                    <h3 className="font-semibold">
-                      {lead.name}
-                    </h3>
+              <div className="space-y-4">
+                {todaysFollowUps
+                  .length === 0 ? (
+                  <p className="text-zinc-500">
+                    No follow-ups
+                    today
+                  </p>
+                ) : (
+                  todaysFollowUps.map(
+                    (lead: any) => (
+                      <Link
+                        key={
+                          lead.id
+                        }
+                        href={`/leads/${lead.id}`}
+                        className="block border border-white/10 rounded-2xl p-4 hover:bg-zinc-800"
+                      >
+                        <h3 className="font-semibold">
+                          {
+                            lead.name
+                          }
+                        </h3>
 
-                    <p className="text-zinc-400">
-                      {lead.company}
-                    </p>
+                        <p className="text-zinc-500 capitalize">
+                          {
+                            lead.priority
+                          }
+                        </p>
+                      </Link>
+                    )
+                  )
+                )}
+              </div>
+            </div>
 
-                    <p className="capitalize text-zinc-500">
-                      {lead.status}
-                    </p>
-                  </div>
-                ))}
+            <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
+              <h2 className="text-2xl font-bold mb-6 text-red-400">
+                Overdue Leads
+              </h2>
+
+              <div className="space-y-4">
+                {overdueLeads
+                  .length === 0 ? (
+                  <p className="text-zinc-500">
+                    No overdue
+                    leads
+                  </p>
+                ) : (
+                  overdueLeads.map(
+                    (lead: any) => (
+                      <Link
+                        key={
+                          lead.id
+                        }
+                        href={`/leads/${lead.id}`}
+                        className="block border border-red-500/20 rounded-2xl p-4 hover:bg-zinc-800"
+                      >
+                        <h3 className="font-semibold">
+                          {
+                            lead.name
+                          }
+                        </h3>
+
+                        <p className="text-red-400 capitalize">
+                          {
+                            lead.priority
+                          }
+                        </p>
+                      </Link>
+                    )
+                  )
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -188,35 +342,151 @@ export default async function DashboardPage() {
           Admin Dashboard
         </h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-5 gap-6">
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">
+            <p className="text-zinc-400">
               Total Leads
             </p>
 
             <h2 className="text-5xl font-bold mt-3">
-              {stats.totalLeads}
+              {
+                stats.totalLeads
+              }
             </h2>
           </div>
 
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">
+            <p className="text-zinc-400">
               Proposal Sent
             </p>
 
             <h2 className="text-5xl font-bold mt-3">
-              {stats.proposalSent}
+              {
+                stats.proposalSent
+              }
             </h2>
           </div>
 
           <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">
+            <p className="text-zinc-400">
               Won Deals
             </p>
 
             <h2 className="text-5xl font-bold mt-3">
-              {stats.closedDeals}
+              {
+                stats.closedDeals
+              }
             </h2>
+          </div>
+
+          <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
+            <p className="text-zinc-400">
+              Today's Follow-ups
+            </p>
+
+            <h2 className="text-5xl font-bold mt-3">
+              {
+                stats
+                  .todaysFollowUps
+                  .length
+              }
+            </h2>
+          </div>
+
+          <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6">
+            <p className="text-zinc-400">
+              Overdue Leads
+            </p>
+
+            <h2 className="text-5xl font-bold mt-3 text-red-400">
+              {
+                stats
+                  .overdueLeads
+                  .length
+              }
+            </h2>
+          </div>
+        </div>
+
+        <div className="mt-12 grid md:grid-cols-2 gap-6">
+          <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
+            <h2 className="text-2xl font-bold mb-6">
+              Today's Follow-ups
+            </h2>
+
+            <div className="space-y-4">
+              {stats
+                .todaysFollowUps
+                .length === 0 ? (
+                <p className="text-zinc-500">
+                  No follow-ups
+                  today
+                </p>
+              ) : (
+                stats.todaysFollowUps.map(
+                  (lead: any) => (
+                    <Link
+                      key={lead.id}
+                      href={`/leads/${lead.id}`}
+                      className="block border border-white/10 rounded-2xl p-4 hover:bg-zinc-800"
+                    >
+                      <h3 className="font-semibold">
+                        {
+                          lead.name
+                        }
+                      </h3>
+
+                      <p className="text-zinc-500">
+                        {
+                          lead.createdBy
+                            ?.name
+                        }
+                      </p>
+                    </Link>
+                  )
+                )
+              )}
+            </div>
+          </div>
+
+          <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
+            <h2 className="text-2xl font-bold mb-6 text-red-400">
+              Overdue Leads
+            </h2>
+
+            <div className="space-y-4">
+              {stats
+                .overdueLeads
+                .length === 0 ? (
+                <p className="text-zinc-500">
+                  No overdue
+                  leads
+                </p>
+              ) : (
+                stats.overdueLeads.map(
+                  (lead: any) => (
+                    <Link
+                      key={lead.id}
+                      href={`/leads/${lead.id}`}
+                      className="block border border-red-500/20 rounded-2xl p-4 hover:bg-zinc-800"
+                    >
+                      <h3 className="font-semibold">
+                        {
+                          lead.name
+                        }
+                      </h3>
+
+                      <p className="text-red-400">
+                        {
+                          lead.createdBy
+                            ?.name
+                        }
+                      </p>
+                    </Link>
+                  )
+                )
+              )}
+            </div>
           </div>
         </div>
 
@@ -227,13 +497,29 @@ export default async function DashboardPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {stats.employeeStats.map(
-              (employee: any) => {
+              (
+                employee: any
+              ) => {
                 const wonDeals =
                   employee.leads.filter(
-                    (lead: any) =>
+                    (
+                      lead: any
+                    ) =>
                       lead.status ===
                       "won"
                   ).length;
+
+                const conversion =
+                  employee.leads
+                    .length > 0
+                    ? (
+                        (wonDeals /
+                          employee
+                            .leads
+                            .length) *
+                        100
+                      ).toFixed(1)
+                    : "0";
 
                 return (
                   <div
@@ -249,8 +535,8 @@ export default async function DashboardPage() {
                     </h3>
 
                     <p className="text-zinc-400 mt-2">
-                      Employee ID:
-                      {" "}
+                      Employee
+                      ID:{" "}
                       {
                         employee.employeeId
                       }
@@ -258,8 +544,8 @@ export default async function DashboardPage() {
 
                     <div className="mt-6 space-y-3">
                       <p>
-                        Total Leads:
-                        {" "}
+                        Total
+                        Leads:{" "}
                         <span className="font-bold">
                           {
                             employee
@@ -270,12 +556,22 @@ export default async function DashboardPage() {
                       </p>
 
                       <p>
-                        Won Deals:
-                        {" "}
+                        Won
+                        Deals:{" "}
                         <span className="font-bold">
                           {
                             wonDeals
                           }
+                        </span>
+                      </p>
+
+                      <p>
+                        Conversion:{" "}
+                        <span className="font-bold">
+                          {
+                            conversion
+                          }
+                          %
                         </span>
                       </p>
                     </div>

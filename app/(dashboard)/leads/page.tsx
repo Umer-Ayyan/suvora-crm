@@ -8,6 +8,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { authOptions } from "@/lib/auth";
+import ViewToggle from "@/components/leads/view-toggle";
 
 async function getLeads() {
   const headersList = await headers();
@@ -148,22 +149,79 @@ export default async function LeadsPage({
 
         <SearchFilter />
 
-        {filteredLeads.length === 0 ? (
-          <div className="bg-zinc-900 border border-white/10 rounded-3xl p-12 text-center">
-            <h3 className="text-2xl font-semibold mb-2">
-              No leads found
-            </h3>
+        <ViewToggle
+  tableView={
+    filteredLeads.length ===
+    0 ? (
+      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-12 text-center">
+        <h3 className="text-2xl font-semibold mb-2">
+          No leads found
+        </h3>
 
-            <p className="text-zinc-400">
-              Create your first lead or
-              adjust your filters.
-            </p>
+        <p className="text-zinc-400">
+          Create your first lead
+          or adjust your
+          filters.
+        </p>
+      </div>
+    ) : (
+      <LeadsTable
+        leads={paginatedLeads}
+      />
+    )
+  }
+  kanbanView={
+    <div className="grid grid-cols-5 gap-6">
+      {columns.map((column) => {
+        const columnLeads =
+          filteredLeads.filter(
+            (lead: any) =>
+              lead.status ===
+              column
+          );
+
+        return (
+          <div
+            key={column}
+            className="bg-zinc-900 rounded-3xl p-5 border border-white/10"
+          >
+            <h2 className="text-xl font-semibold capitalize mb-5">
+              {column}
+            </h2>
+
+            <div className="space-y-4">
+              {columnLeads.map(
+                (lead: any) => (
+                  <Link
+                    key={lead.id}
+                    href={`/leads/${lead.id}`}
+                    className="block bg-zinc-800 rounded-2xl p-4 hover:bg-zinc-700"
+                  >
+                    <h3 className="font-semibold">
+                      {lead.name}
+                    </h3>
+
+                    <p className="text-zinc-400 text-sm">
+                      {
+                        lead.company
+                      }
+                    </p>
+
+                    <p className="text-zinc-500 text-sm capitalize">
+                      {
+                        lead.priority
+                      }
+                    </p>
+                  </Link>
+                )
+              )}
+            </div>
           </div>
-        ) : (
-          <LeadsTable
-            leads={paginatedLeads}
-          />
-        )}
+        );
+      })}
+    </div>
+  }
+/>
 
         <div className="flex items-center justify-center gap-4 mt-8">
           {currentPage > 1 && (
