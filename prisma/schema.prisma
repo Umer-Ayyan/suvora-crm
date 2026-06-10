@@ -195,15 +195,29 @@ model Payslip {
 
 // ─── USER ──────────────────────────────────────────────────────────────────
 model User {
-  id         String   @id @default(cuid())
-  name       String
-  employeeId String   @unique
-  password   String
-  role       String   @default("employee") // admin | manager | employee
-  salary     Float    @default(0)
-  department String?
-  phone      String?
-  createdAt  DateTime @default(now())
+  id           String    @id @default(cuid())
+  name         String
+  employeeId   String    @unique
+  password     String
+  role         String    @default("employee") // admin | manager | employee
+  salary       Float     @default(0)
+  department   String?
+  phone        String?
+  // Extended HR profile fields
+  email        String?
+  designation  String?
+  joiningDate  DateTime?
+  cnic         String?
+  address      String?
+  city         String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  bankName     String?
+  bankAccount  String?
+  bloodGroup   String?
+  gender       String?
+  status       String    @default("active") // active | inactive | terminated
+  createdAt    DateTime  @default(now())
 
   leads             Lead[]
   activityLogs      ActivityLog[]
@@ -219,7 +233,26 @@ model User {
   quotations        Quotation[]
   invoices          Invoice[]
   goals             Goal[]
-  goalsCreated      Goal[]     @relation("GoalCreator")
+  goalsCreated      Goal[]        @relation("GoalCreator")
+  documents         EmployeeDocument[]
+}
+
+// ─── EMPLOYEE DOCUMENT ─────────────────────────────────────────────────────
+model EmployeeDocument {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String                        // display name
+  category    String   @default("other")   // offer_letter | nda | contract | id_copy | other
+  fileName    String                        // original file name
+  fileType    String                        // mime type
+  fileSize    Int                           // bytes
+  fileData    String                        // base64 encoded file
+  notes       String?
+  uploadedAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([category])
 }
 
 // ─── QUOTATION ─────────────────────────────────────────────────────────────

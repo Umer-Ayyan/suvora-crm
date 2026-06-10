@@ -16,11 +16,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const data: any = {};
 
     // Profile fields
-    if (body.name?.trim())       data.name = body.name.trim();
-    if (body.role)               data.role = body.role;
-    if (body.department !== undefined) data.department = body.department || null;
-    if (body.phone !== undefined)      data.phone = body.phone || null;
-    if (body.salary !== undefined)     data.salary = Number(body.salary);
+    if (body.name?.trim())              data.name = body.name.trim();
+    if (body.role)                      data.role = body.role;
+    if (body.department !== undefined)  data.department = body.department || null;
+    if (body.phone !== undefined)       data.phone = body.phone || null;
+    if (body.email !== undefined)       data.email = body.email || null;
+    if (body.salary !== undefined)      data.salary = Number(body.salary);
+    if (body.designation !== undefined) data.designation = body.designation || null;
+    if (body.joiningDate !== undefined) data.joiningDate = body.joiningDate ? new Date(body.joiningDate) : null;
+    if (body.cnic !== undefined)        data.cnic = body.cnic || null;
+    if (body.address !== undefined)     data.address = body.address || null;
+    if (body.city !== undefined)        data.city = body.city || null;
+    if (body.emergencyContactName !== undefined)  data.emergencyContactName = body.emergencyContactName || null;
+    if (body.emergencyContactPhone !== undefined) data.emergencyContactPhone = body.emergencyContactPhone || null;
+    if (body.bankName !== undefined)    data.bankName = body.bankName || null;
+    if (body.bankAccount !== undefined) data.bankAccount = body.bankAccount || null;
+    if (body.bloodGroup !== undefined)  data.bloodGroup = body.bloodGroup || null;
+    if (body.gender !== undefined)      data.gender = body.gender || null;
+    if (body.status !== undefined)      data.status = body.status || "active";
 
     // Password reset
     if (body.password?.trim()) {
