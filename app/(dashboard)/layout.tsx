@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import SuvoraLogo from "@/components/ui/suvora-logo";
 import GlobalSearch from "@/components/ui/global-search";
 import NotificationBell from "@/components/notifications/notification-bell";
+import SendAnnouncement from "@/components/announcements/send-announcement";
 
 const navItems = [
   {
@@ -223,6 +224,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.015)" }}>
           <GlobalSearch />
           <div className="ml-auto flex items-center gap-2">
+            {session?.user && (session.user as any).role === "admin" && (
+              <SendAnnouncement />
+            )}
             <NotificationBell />
           </div>
         </header>

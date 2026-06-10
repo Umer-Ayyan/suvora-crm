@@ -45,6 +45,7 @@ export default function NotificationBell() {
 
   const TYPE_COLORS: Record<string, string> = {
     info: "#60a5fa", success: "#6ee7b7", warning: "#fcd34d", error: "#f87171",
+    announcement: "#f0abfc",
   };
 
   return (
@@ -89,8 +90,17 @@ export default function NotificationBell() {
                     background: n.read ? "transparent" : "rgba(124,58,237,0.06)",
                     borderBottom: "1px solid rgba(255,255,255,0.04)",
                   }}>
-                  <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0"
-                    style={{ background: n.read ? "rgba(255,255,255,0.2)" : (TYPE_COLORS[n.type] ?? "#a78bfa") }} />
+                  {n.type === "announcement" ? (
+                    <div className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5"
+                      style={{ background: "rgba(240,171,252,0.15)" }}>
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="#f0abfc" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0"
+                      style={{ background: n.read ? "rgba(255,255,255,0.2)" : (TYPE_COLORS[n.type] ?? "#a78bfa") }} />
+                  )}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold" style={{ color: n.read ? "rgba(255,255,255,0.5)" : "white" }}>
                       {n.title}
