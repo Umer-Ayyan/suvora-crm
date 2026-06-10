@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import Link from "next/link";
 import PrintButton from "./print-button";
 
 const MONTHS = ["January","February","March","April","May","June",
@@ -54,9 +55,9 @@ export default async function PrintPayslipPage({ params }: { params: Promise<{ i
       <div className="min-h-screen flex flex-col items-center justify-start py-10 px-4" style={{ background: "var(--bg-base)" }}>
         {/* Toolbar */}
         <div className="no-print w-full max-w-2xl flex items-center justify-between mb-6">
-          <a href="/payslips" className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.5)" }}>
+          <Link href="/payslips" className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.5)" }}>
             ← Back to Payslips
-          </a>
+          </Link>
           <PrintButton />
         </div>
 

@@ -7,40 +7,68 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── LEAD ──────────────────────────────────────────────────────────────────
 model Lead {
-  id          String   @id @default(cuid())
-  name        String
-  company     String?
-  email       String?
-  source      String
-  status      String   @default("new")
-  budget      String?
-  dealValue   Float?
-  notes       String?
-
+  id           String    @id @default(cuid())
+  name         String
+  company      String?
+  email        String?
+  phone        String?
+  country      String?
+  industry     String?
+  source       String
+  status       String    @default("new")
+  budget       String?
+  dealValue    Float?
+  notes        String?
   followUpDate DateTime?
-  priority     String? @default("medium")
-
-  createdAt   DateTime @default(now())
+  priority     String?   @default("medium")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt @default(now())
 
   createdById String?
-  createdBy   User? @relation(fields: [createdById], references: [id])
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+
+  clientId    String?
+  client      Client? @relation(fields: [clientId], references: [id])
 
   activities  LeadActivity[]
+  leadNotes   LeadNote[]
+  tasks       Task[]
+
+  @@index([status])
+  @@index([createdById])
+  @@index([followUpDate])
+  @@index([clientId])
 }
 
+// ─── LEAD ACTIVITY (timeline) ──────────────────────────────────────────────
 model LeadActivity {
-  id          String   @id @default(cuid())
-  note        String
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  note      String
+  createdAt DateTime @default(now())
 
-  leadId      String
-  lead        Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
-  userId      String?
-  user        User? @relation(fields: [userId], references: [id])
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 }
 
+// ─── LEAD NOTES ────────────────────────────────────────────────────────────
+model LeadNote {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  leadId String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation("LeadNoteAuthor", fields: [userId], references: [id])
+}
+
+// ─── ACTIVITY LOG (audit trail) ─────────────────────────────────────────────
 model ActivityLog {
   id          String   @id @default(cuid())
   action      String
@@ -49,14 +77,84 @@ model ActivityLog {
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([action])
+  @@index([createdAt])
 }
 
+// ─── CLIENT ────────────────────────────────────────────────────────────────
+model Client {
+  id       String  @id @default(cuid())
+  name     String
+  company  String
+  email    String?
+  phone    String?
+  country  String?
+  industry String?
+  website  String?
+  notes    String?
+  status   String  @default("active") // active | inactive
+
+  totalRevenue Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt @default(now())
+
+  createdById String?
+  createdBy   User?   @relation("ClientCreator", fields: [createdById], references: [id])
+
+  leads Lead[]
+  tasks Task[]
+}
+
+// ─── TASK ──────────────────────────────────────────────────────────────────
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  status      String    @default("pending")  // pending | in_progress | completed | cancelled
+  priority    String    @default("medium")   // low | medium | high | urgent
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt @default(now())
+
+  assignedToId String?
+  assignedTo   User?   @relation("TaskAssignee", fields: [assignedToId], references: [id])
+
+  createdById String?
+  createdBy   User?   @relation("TaskCreator", fields: [createdById], references: [id])
+
+  leadId String?
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([dueDate])
+}
+
+// ─── NOTIFICATION ──────────────────────────────────────────────────────────
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  message   String
+  type      String   @default("info") // info | success | warning | error
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─── ATTENDANCE ────────────────────────────────────────────────────────────
 model Attendance {
   id           String    @id @default(cuid())
   date         DateTime  @db.Date
   checkInTime  DateTime?
-  status       String    @default("absent") // present | late | half_day | absent
-  deductionPct Float     @default(0)        // 0 | 25 | 50 | 100
+  status       String    @default("absent")
+  deductionPct Float     @default(0)
   notes        String?
   createdAt    DateTime  @default(now())
 
@@ -64,8 +162,11 @@ model Attendance {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+  @@index([date])
+  @@index([status])
 }
 
+// ─── PAYSLIP ───────────────────────────────────────────────────────────────
 model Payslip {
   id             String   @id @default(cuid())
   month          Int
@@ -87,8 +188,10 @@ model Payslip {
   generatedBy   User?  @relation("PayslipGenerator", fields: [generatedById], references: [id])
 
   @@unique([userId, month, year])
+  @@index([year, month])
 }
 
+// ─── USER ──────────────────────────────────────────────────────────────────
 model User {
   id         String   @id @default(cuid())
   name       String
@@ -96,12 +199,19 @@ model User {
   password   String
   role       String   @default("employee") // admin | manager | employee
   salary     Float    @default(0)
+  department String?
+  phone      String?
   createdAt  DateTime @default(now())
 
   leads             Lead[]
   activityLogs      ActivityLog[]
   leadActivities    LeadActivity[]
+  leadNotes         LeadNote[]    @relation("LeadNoteAuthor")
   attendances       Attendance[]
   payslips          Payslip[]
-  generatedPayslips Payslip[] @relation("PayslipGenerator")
+  generatedPayslips Payslip[]     @relation("PayslipGenerator")
+  clientsCreated    Client[]      @relation("ClientCreator")
+  tasksAssigned     Task[]        @relation("TaskAssignee")
+  tasksCreated      Task[]        @relation("TaskCreator")
+  notifications     Notification[]
 }

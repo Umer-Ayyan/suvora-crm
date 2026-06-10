@@ -1,58 +1,35 @@
-"use client";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import CalendarClient from "./calendar-client";
 
-import {
-  Calendar,
-  dateFnsLocalizer,
-} from "react-big-calendar";
+export default async function CalendarPage() {
+  const session = await getServerSession(authOptions);
+  if (!session) redirect("/login");
 
-import { format } from "date-fns";
-import { parse } from "date-fns";
-import { startOfWeek } from "date-fns";
-import { getDay } from "date-fns";
-import "react-big-calendar/lib/css/react-big-calendar.css";
+  const role = (session.user as any).role;
+  const employeeId = (session.user as any).employeeId;
+  const user = await prisma.user.findUnique({ where: { employeeId } });
+  if (!user) redirect("/login");
 
-const locales = {};
-
-const localizer =
-  dateFnsLocalizer({
-    format,
-    parse,
-    startOfWeek,
-    getDay,
-    locales,
+  const leads = await prisma.lead.findMany({
+    where: {
+      followUpDate: { not: null },
+      ...(role === "employee" ? { createdById: user.id } : {}),
+    },
+    select: { id: true, name: true, company: true, followUpDate: true, status: true, priority: true },
+    orderBy: { followUpDate: "asc" },
   });
 
-const events = [
-  {
-    title:
-      "Demo Follow-up",
-    start: new Date(),
-    end: new Date(),
-  },
-];
+  const tasks = await prisma.task.findMany({
+    where: {
+      dueDate: { not: null },
+      ...(role === "employee" ? { assignedToId: user.id } : {}),
+    },
+    select: { id: true, title: true, dueDate: true, status: true, priority: true },
+    orderBy: { dueDate: "asc" },
+  });
 
-export default function CalendarPage() {
-  return (
-    <main className="min-h-screen bg-zinc-950 text-white p-10">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8">
-          Follow-up Calendar
-        </h1>
-
-        <div className="bg-white rounded-3xl p-5 h-[800px] text-black">
-          <Calendar
-            localizer={
-              localizer
-            }
-            events={events}
-            startAccessor="start"
-            endAccessor="end"
-            style={{
-              height: "100%",
-            }}
-          />
-        </div>
-      </div>
-    </main>
-  );
+  return <CalendarClient leads={leads} tasks={tasks} />;
 }

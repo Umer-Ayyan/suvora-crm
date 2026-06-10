@@ -71,6 +71,7 @@ export default async function PrintPayslipPage({ params }: { params: Promise<{ i
       <body>
         <div className="page">
           <div className="toolbar no-print">
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/payslips" className="back">← Back to Payslips</a>
             <PrintButton />
           </div>
