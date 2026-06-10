@@ -18,7 +18,7 @@ async function getAdminStats() {
   const deals = leadsWithValue.filter((lead: any) => lead.dealValue !== null);
   const averageDealSize = deals.length > 0 ? deals.reduce((sum: any, lead: any) => sum + (lead.dealValue || 0), 0) / deals.length : 0;
 
-  const employeeStats = await prisma.user.findMany({ where: { role: { in: ["employee", "manager"] } }, include: { leads: true } });
+  const employeeStats = await prisma.user.findMany({ where: { role: "employee" }, include: { leads: true } });
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
