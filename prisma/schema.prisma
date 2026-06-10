@@ -105,6 +105,7 @@ model Client {
   leads      Lead[]
   tasks      Task[]
   quotations Quotation[]
+  invoices   Invoice[]
 }
 
 // ─── TASK ──────────────────────────────────────────────────────────────────
@@ -216,6 +217,7 @@ model User {
   tasksCreated      Task[]        @relation("TaskCreator")
   notifications     Notification[]
   quotations        Quotation[]
+  invoices          Invoice[]
 }
 
 // ─── QUOTATION ─────────────────────────────────────────────────────────────
@@ -264,4 +266,59 @@ model QuotationItem {
   unitPrice   Float     @default(0)
   amount      Float     @default(0)
   order       Int       @default(0)
+}
+
+// ─── INVOICE ───────────────────────────────────────────────────────────────
+model Invoice {
+  id           String   @id @default(cuid())
+  number       String   @unique // e.g. INV-0001
+  status       String   @default("unpaid") // unpaid | paid | overdue | partial
+
+  // Client info
+  clientId      String?
+  client        Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientName    String
+  clientEmail   String?
+  clientCompany String?
+
+  // Linked quotation (optional)
+  quotationId   String?
+  quotationNumber String?
+
+  // Dates
+  issueDate     DateTime @default(now())
+  dueDate       DateTime?
+  paidAt        DateTime?
+
+  // Financials
+  subtotal      Float    @default(0)
+  discountPct   Float    @default(0)
+  taxPct        Float    @default(0)
+  total         Float    @default(0)
+  amountPaid    Float    @default(0)
+
+  notes         String?
+  terms         String?
+
+  items         InvoiceItem[]
+
+  createdById   String?
+  createdBy     User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt @default(now())
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([createdAt])
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float   @default(1)
+  unitPrice   Float   @default(0)
+  amount      Float   @default(0)
+  order       Int     @default(0)
 }
