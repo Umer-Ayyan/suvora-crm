@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import Link from "next/link";
 import PrintButton from "./print-button";
 
 const MONTHS = ["January","February","March","April","May","June",
@@ -71,8 +72,7 @@ export default async function PrintPayslipPage({ params }: { params: Promise<{ i
       <body>
         <div className="page">
           <div className="toolbar no-print">
-            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-            <a href="/payslips" className="back">← Back to Payslips</a>
+            <Link href="/payslips" className="back">← Back to Payslips</Link>
             <PrintButton />
           </div>
 
