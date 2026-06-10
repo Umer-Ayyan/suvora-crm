@@ -45,6 +45,11 @@ const navItems = [
     label: "Attendance",
     icon: <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>,
   },
+  {
+    href: "/goals",
+    label: "Goals",
+    icon: <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+  },
 ];
 
 const adminNavItems = [
@@ -121,6 +126,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSidebarOpen(false);
   }, [pathname]);
 
@@ -144,7 +150,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const roleLabel = role === "admin" ? "Admin" : role === "manager" ? "Manager" : "Employee";
   const privilegedItems = role === "admin" ? adminNavItems : role === "manager" ? managerNavItems : [];
 
-  const SidebarContent = () => (
+  const renderSidebar = () => (
     <>
       {/* Logo */}
       <div className="px-5 py-5 border-b flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
@@ -248,7 +254,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           backdropFilter: "blur(20px)",
         }}
       >
-        <SidebarContent />
+        {renderSidebar()}
       </aside>
 
       {/* ── Mobile sidebar backdrop ── */}
@@ -269,7 +275,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
         }}
       >
-        <SidebarContent />
+        {renderSidebar()}
       </aside>
 
       {/* ── Main content ── */}

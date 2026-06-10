@@ -218,6 +218,8 @@ model User {
   notifications     Notification[]
   quotations        Quotation[]
   invoices          Invoice[]
+  goals             Goal[]
+  goalsCreated      Goal[]     @relation("GoalCreator")
 }
 
 // ─── QUOTATION ─────────────────────────────────────────────────────────────
@@ -321,4 +323,26 @@ model InvoiceItem {
   unitPrice   Float   @default(0)
   amount      Float   @default(0)
   order       Int     @default(0)
+}
+
+// ─── GOAL ──────────────────────────────────────────────────────────────────
+model Goal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  type        String   @default("leads")   // leads | revenue | tasks | custom
+  targetValue Float    @default(0)
+  currentValue Float   @default(0)
+  period      String   @default("monthly") // monthly | quarterly | yearly
+  month       Int?     // 1-12
+  year        Int
+  notes       String?
+  createdById String?
+  createdBy   User?    @relation("GoalCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt @default(now())
+
+  @@index([userId])
+  @@index([year, month])
 }
