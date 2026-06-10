@@ -41,23 +41,23 @@ export async function PATCH(
     const body =
       await req.json();
 
-    const hashedPassword =
-      await bcrypt.hash(
-        body.password,
-        10
-      );
+    // salary update (no password needed)
+    if (body.salary !== undefined && !body.password) {
+      await prisma.user.update({
+        where: { id },
+        data: { salary: Number(body.salary) },
+      });
+      return NextResponse.json({ success: true });
+    }
+
+    const hashedPassword = await bcrypt.hash(body.password, 10);
 
     await prisma.user.update({
       where: { id },
-      data: {
-        password:
-          hashedPassword,
-      },
+      data: { password: hashedPassword },
     });
 
-    return NextResponse.json({
-      success: true,
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error(error);
 

@@ -131,55 +131,79 @@ export async function PATCH(
       });
 
     // Status Change
-    if (body.status) {
-      await prisma.activityLog.create({
-        data: {
-          action:
-            "STATUS_CHANGED",
+    if (
+  body.status &&
+  body.status !== lead.status
+) {
+  await prisma.activityLog.create({
+    data: {
+      action: "STATUS_CHANGED",
+      description: `${user.name} changed "${updatedLead.name}" status to ${body.status}`,
+      userId: user.id,
+    },
+  });
 
-          description: `${user.name} changed "${updatedLead.name}" status to ${body.status}`,
-
-          userId: user.id,
-        },
-      });
-    }
+  await prisma.leadActivity.create({
+    data: {
+      note: `Status changed to ${body.status}`,
+      leadId: lead.id,
+      userId: user.id,
+    },
+  });
+}
 
     // Priority Change
-    if (body.priority) {
-      await prisma.activityLog.create({
-        data: {
-          action:
-            "PRIORITY_CHANGED",
+   if (
+  body.priority &&
+  body.priority !== lead.priority
+) {
+  await prisma.activityLog.create({
+    data: {
+      action: "PRIORITY_CHANGED",
+      description: `${user.name} changed "${updatedLead.name}" priority to ${body.priority}`,
+      userId: user.id,
+    },
+  });
 
-          description: `${user.name} changed "${updatedLead.name}" priority to ${body.priority}`,
-
-          userId: user.id,
-        },
-      });
-    }
+  await prisma.leadActivity.create({
+    data: {
+      note: `Priority changed to ${body.priority}`,
+      leadId: lead.id,
+      userId: user.id,
+    },
+  });
+}
 
     // Follow-up Update
-    if (
-      body.followUpDate !==
-      undefined
-    ) {
-      await prisma.activityLog.create({
-        data: {
-          action:
-            "FOLLOWUP_UPDATED",
+   if (
+  body.followUpDate !== undefined &&
+  String(lead.followUpDate || "") !==
+    String(body.followUpDate || "")
+) {
+  await prisma.activityLog.create({
+    data: {
+      action: "FOLLOWUP_UPDATED",
+      description: `${user.name} updated follow-up date for "${updatedLead.name}"`,
+      userId: user.id,
+    },
+  });
 
-          description: `${user.name} updated follow-up date for "${updatedLead.name}"`,
-
-          userId: user.id,
-        },
-      });
-    }
-
+  await prisma.leadActivity.create({
+    data: {
+      note: body.followUpDate
+        ? `Follow-up date updated to ${body.followUpDate}`
+        : "Follow-up date removed",
+      leadId: lead.id,
+      userId: user.id,
+    },
+  });
+}
     // Reassignment
     if (
-      body.createdById !==
-      undefined
-    ) {
+  body.createdById !== undefined &&
+  body.createdById !==
+    lead.createdById
+) {
       const assignedUser =
         await prisma.user.findUnique(
           {
@@ -188,6 +212,14 @@ export async function PATCH(
             },
           }
         );
+
+        await prisma.leadActivity.create({
+  data: {
+    note: `Lead reassigned to ${assignedUser?.name}`,
+    leadId: lead.id,
+    userId: user.id,
+  },
+});
 
       await prisma.activityLog.create(
         {
@@ -276,7 +308,7 @@ export async function DELETE(
         action:
           "LEAD_DELETED",
 
-        description: `${(session.user as any).name} deleted lead "${lead?.name}"`,
+        description: `${(session?.user as any)?.name} deleted lead "${lead?.name}"`,
       },
     });
 

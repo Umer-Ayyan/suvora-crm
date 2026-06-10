@@ -99,6 +99,12 @@ export async function POST(
   company: body.company,
   email: body.email,
   budget: body.budget,
+
+  dealValue:
+  body.dealValue
+    ? Number(body.dealValue)
+    : null,
+
   notes: body.notes,
 
   followUpDate:

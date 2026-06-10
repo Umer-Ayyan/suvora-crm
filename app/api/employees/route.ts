@@ -66,11 +66,10 @@ const nextEmployeeId = `EMP${String(
       await prisma.user.create({
         data: {
           name: body.name,
-          employeeId:
-            nextEmployeeId,
-          password:
-            hashedPassword,
-          role: "employee",
+          employeeId: nextEmployeeId,
+          password: hashedPassword,
+          role: body.role === "manager" ? "manager" : "employee",
+          salary: Number(body.salary) || 0,
         },
       });
 

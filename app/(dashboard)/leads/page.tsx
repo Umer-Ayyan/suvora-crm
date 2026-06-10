@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { authOptions } from "@/lib/auth";
 import ViewToggle from "@/components/leads/view-toggle";
+import KanbanBoard from "@/components/leads/kanban-board";
 
 async function getLeads() {
   const headersList = await headers();
@@ -137,116 +138,68 @@ export default async function LeadsPage({
   );
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white p-10">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-10">
-          <h1 className="text-4xl font-bold">
-            Leads Pipeline
-          </h1>
-        </div>
+    <div className="p-8 max-w-7xl mx-auto animate-slide-up">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white">Leads Pipeline</h1>
+        <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+          {filteredLeads.length} lead{filteredLeads.length !== 1 ? "s" : ""} found
+        </p>
+      </div>
 
         <AddLeadForm />
 
         <SearchFilter />
 
         <ViewToggle
-  tableView={
-    filteredLeads.length ===
-    0 ? (
-      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-12 text-center">
-        <h3 className="text-2xl font-semibold mb-2">
-          No leads found
-        </h3>
+          tableView={
+            filteredLeads.length === 0 ? (
+              <div
+                className="rounded-2xl p-12 text-center"
+                style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                  style={{ background: "rgba(124,58,237,0.15)" }}
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} style={{ color: "#a78bfa" }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-1">No leads found</h3>
+                <p className="text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>Create your first lead or adjust your filters.</p>
+              </div>
+            ) : (
+              <LeadsTable leads={paginatedLeads} />
+            )
+          }
+          kanbanView={<KanbanBoard leads={filteredLeads} />}
+        />
 
-        <p className="text-zinc-400">
-          Create your first lead
-          or adjust your
-          filters.
-        </p>
-      </div>
-    ) : (
-      <LeadsTable
-        leads={paginatedLeads}
-      />
-    )
-  }
-  kanbanView={
-    <div className="grid grid-cols-5 gap-6">
-      {columns.map((column) => {
-        const columnLeads =
-          filteredLeads.filter(
-            (lead: any) =>
-              lead.status ===
-              column
-          );
-
-        return (
-          <div
-            key={column}
-            className="bg-zinc-900 rounded-3xl p-5 border border-white/10"
-          >
-            <h2 className="text-xl font-semibold capitalize mb-5">
-              {column}
-            </h2>
-
-            <div className="space-y-4">
-              {columnLeads.map(
-                (lead: any) => (
-                  <Link
-                    key={lead.id}
-                    href={`/leads/${lead.id}`}
-                    className="block bg-zinc-800 rounded-2xl p-4 hover:bg-zinc-700"
-                  >
-                    <h3 className="font-semibold">
-                      {lead.name}
-                    </h3>
-
-                    <p className="text-zinc-400 text-sm">
-                      {
-                        lead.company
-                      }
-                    </p>
-
-                    <p className="text-zinc-500 text-sm capitalize">
-                      {
-                        lead.priority
-                      }
-                    </p>
-                  </Link>
-                )
-              )}
-            </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-8">
+            {currentPage > 1 && (
+              <Link
+                href={`/leads?page=${currentPage - 1}`}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}
+              >
+                ← Previous
+              </Link>
+            )}
+            <span className="text-sm px-3" style={{ color: "rgba(255,255,255,0.4)" }}>
+              Page {currentPage} of {totalPages}
+            </span>
+            {currentPage < totalPages && (
+              <Link
+                href={`/leads?page=${currentPage + 1}`}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}
+              >
+                Next →
+              </Link>
+            )}
           </div>
-        );
-      })}
-    </div>
-  }
-/>
-
-        <div className="flex items-center justify-center gap-4 mt-8">
-          {currentPage > 1 && (
-            <Link
-              href={`/leads?page=${currentPage - 1}`}
-              className="bg-zinc-900 border border-white/10 px-5 py-2 rounded-xl"
-            >
-              Previous
-            </Link>
-          )}
-
-          <p className="text-zinc-400">
-            Page {currentPage} of{" "}
-            {totalPages}
-          </p>
-
-          {currentPage < totalPages && (
-            <Link
-              href={`/leads?page=${currentPage + 1}`}
-              className="bg-zinc-900 border border-white/10 px-5 py-2 rounded-xl"
-            >
-              Next
-            </Link>
-          )}
-        </div>
+        )}
 
         <div className="hidden">
           {columns.map((column) => {
@@ -318,7 +271,6 @@ export default async function LeadsPage({
             );
           })}
         </div>
-      </div>
-    </main>
+    </div>
   );
 }

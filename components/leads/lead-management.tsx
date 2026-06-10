@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function LeadManagement({
   leadId,
@@ -14,6 +21,21 @@ export default function LeadManagement({
   currentPriority?: string | null;
   currentFollowUpDate?: Date | string | null;
 }) {
+  const originalStatus =
+    currentStatus;
+
+  const originalPriority =
+    currentPriority || "medium";
+
+  const originalFollowUpDate =
+    currentFollowUpDate
+      ? new Date(
+          currentFollowUpDate
+        )
+          .toISOString()
+          .split("T")[0]
+      : "";
+
   const [status, setStatus] =
     useState(currentStatus);
 
@@ -37,6 +59,40 @@ export default function LeadManagement({
     useState(false);
 
   async function save() {
+    const payload: any = {};
+
+    if (
+      status !== originalStatus
+    ) {
+      payload.status = status;
+    }
+
+    if (
+      priority !==
+      originalPriority
+    ) {
+      payload.priority =
+        priority;
+    }
+
+    if (
+      followUpDate !==
+      originalFollowUpDate
+    ) {
+      payload.followUpDate =
+        followUpDate;
+    }
+
+    if (
+      Object.keys(payload)
+        .length === 0
+    ) {
+      toast.info(
+        "No changes made"
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -48,11 +104,9 @@ export default function LeadManagement({
             "Content-Type":
               "application/json",
           },
-          body: JSON.stringify({
-            status,
-            priority,
-            followUpDate,
-          }),
+          body: JSON.stringify(
+            payload
+          ),
         }
       );
 
@@ -79,41 +133,44 @@ export default function LeadManagement({
   }
 
   return (
-    <div className="space-y-4">
+  <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 space-y-5">
       <div>
         <label className="block text-sm text-zinc-400 mb-2">
           Status
         </label>
 
-        <select
-          value={status}
-          onChange={(e) =>
-            setStatus(
-              e.target.value
-            )
-          }
-          className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-3"
-        >
-          <option value="new">
-            New
-          </option>
+       <Select
+  value={status}
+  onValueChange={(value) => {
+    if (value) setStatus(value);
+  }}
+>
+ <SelectTrigger className="w-full bg-zinc-950 border border-white/10 rounded-2xl h-14">
+    <SelectValue />
+  </SelectTrigger>
 
-          <option value="contacted">
-            Contacted
-          </option>
+  <SelectContent>
+    <SelectItem value="new">
+      New
+    </SelectItem>
 
-          <option value="proposal">
-            Proposal
-          </option>
+    <SelectItem value="contacted">
+      Contacted
+    </SelectItem>
 
-          <option value="won">
-            Won
-          </option>
+    <SelectItem value="proposal">
+      Proposal
+    </SelectItem>
 
-          <option value="lost">
-            Lost
-          </option>
-        </select>
+    <SelectItem value="won">
+      Won
+    </SelectItem>
+
+    <SelectItem value="lost">
+      Lost
+    </SelectItem>
+  </SelectContent>
+</Select>
       </div>
 
       <div>
@@ -121,31 +178,34 @@ export default function LeadManagement({
           Priority
         </label>
 
-        <select
-          value={priority}
-          onChange={(e) =>
-            setPriority(
-              e.target.value
-            )
-          }
-          className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-3"
-        >
-          <option value="low">
-            Low
-          </option>
+       <Select
+  value={priority}
+  onValueChange={(value) => {
+    if (value) setPriority(value);
+  }}
+>
+  <SelectTrigger className="w-full bg-zinc-950 border border-white/10 rounded-2xl h-14">
+    <SelectValue />
+  </SelectTrigger>
 
-          <option value="medium">
-            Medium
-          </option>
+  <SelectContent>
+    <SelectItem value="low">
+      Low
+    </SelectItem>
 
-          <option value="high">
-            High
-          </option>
-        </select>
+    <SelectItem value="medium">
+      Medium
+    </SelectItem>
+
+    <SelectItem value="high">
+      High
+    </SelectItem>
+  </SelectContent>
+</Select>
       </div>
 
       <div>
-        <label className="block text-sm text-zinc-400 mb-2">
+        <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-2">
           Next Follow-up
         </label>
 
@@ -157,14 +217,14 @@ export default function LeadManagement({
               e.target.value
             )
           }
-          className="w-full bg-zinc-800 border border-white/10 rounded-xl px-4 py-3"
+          className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none focus:border-white/30 transition"
         />
       </div>
 
       <button
         onClick={save}
         disabled={loading}
-        className="w-full bg-white text-black rounded-xl py-3 font-semibold"
+        className="w-full rounded-2xl py-3 font-semibold bg-white text-black hover:opacity-90 transition"
       >
         {loading
           ? "Saving..."

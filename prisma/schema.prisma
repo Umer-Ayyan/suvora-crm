@@ -8,33 +8,37 @@ datasource db {
 }
 
 model Lead {
-  id      String  @id @default(cuid())
-  name    String
-  company String?
-  email   String?
-  source  String
-  status  String  @default("new")
-  budget  String?
-  notes   String?
+  id          String   @id @default(cuid())
+  name        String
+  company     String?
+  email       String?
+  source      String
+  status      String   @default("new")
+  budget      String?
+  dealValue   Float?
+  notes       String?
 
   followUpDate DateTime?
-  priority     String?   @default("medium")
+  priority     String? @default("medium")
 
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   createdById String?
-  createdBy   User?   @relation(fields: [createdById], references: [id])
+  createdBy   User? @relation(fields: [createdById], references: [id])
 
-  leadNotes LeadNote[]
+  activities  LeadActivity[]
 }
 
-model LeadNote {
-  id        String   @id @default(cuid())
-  note      String
-  createdAt DateTime @default(now())
+model LeadActivity {
+  id          String   @id @default(cuid())
+  note        String
+  createdAt   DateTime @default(now())
 
-  leadId String
-  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId      String
+  lead        Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  userId      String?
+  user        User? @relation(fields: [userId], references: [id])
 }
 
 model ActivityLog {
@@ -47,14 +51,57 @@ model ActivityLog {
   user   User?   @relation(fields: [userId], references: [id])
 }
 
+model Attendance {
+  id           String    @id @default(cuid())
+  date         DateTime  @db.Date
+  checkInTime  DateTime?
+  status       String    @default("absent") // present | late | half_day | absent
+  deductionPct Float     @default(0)        // 0 | 25 | 50 | 100
+  notes        String?
+  createdAt    DateTime  @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model Payslip {
+  id             String   @id @default(cuid())
+  month          Int
+  year           Int
+  baseSalary     Float
+  workingDays    Int
+  presentDays    Int
+  lateDays       Int
+  halfDays       Int
+  absentDays     Int
+  totalDeduction Float
+  netSalary      Float
+  generatedAt    DateTime @default(now())
+
+  userId        String
+  user          User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  generatedById String?
+  generatedBy   User?  @relation("PayslipGenerator", fields: [generatedById], references: [id])
+
+  @@unique([userId, month, year])
+}
+
 model User {
   id         String   @id @default(cuid())
   name       String
   employeeId String   @unique
   password   String
-  role       String   @default("employee")
+  role       String   @default("employee") // admin | manager | employee
+  salary     Float    @default(0)
   createdAt  DateTime @default(now())
 
-  leads        Lead[]
-  activityLogs ActivityLog[]
+  leads             Lead[]
+  activityLogs      ActivityLog[]
+  leadActivities    LeadActivity[]
+  attendances       Attendance[]
+  payslips          Payslip[]
+  generatedPayslips Payslip[] @relation("PayslipGenerator")
 }

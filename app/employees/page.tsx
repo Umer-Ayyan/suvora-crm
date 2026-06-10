@@ -8,118 +8,104 @@ import ResetPassword from "@/components/employees/reset-password";
 import Link from "next/link";
 
 async function getEmployees() {
-  return prisma.user.findMany({
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  return prisma.user.findMany({ orderBy: { createdAt: "desc" } });
 }
 
 export default async function EmployeesPage() {
-  const session =
-    await getServerSession(authOptions);
-
-  if ((session?.user as any)?.role !== "admin") {
-    redirect("/");
-  }
+  const session = await getServerSession(authOptions);
+  if ((session?.user as any)?.role !== "admin") redirect("/");
 
   const employees = await getEmployees();
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white p-10">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-4xl font-bold mb-10">
-          Employee Management
-          <span className="text-zinc-400 ml-3 text-2xl">
-            ({employees.length})
-          </span>
-        </h1>
-
-        <AddEmployeeForm />
-
-        {employees.length === 0 ? (
-          <div className="bg-zinc-900 border border-white/10 rounded-3xl p-12 text-center">
-            <h3 className="text-2xl font-semibold mb-2">
-              No employees found
-            </h3>
-
-            <p className="text-zinc-400">
-              Create your first employee to get started.
-            </p>
-          </div>
-        ) : (
-          <div className="bg-zinc-900 border border-white/10 rounded-3xl overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-zinc-800">
-                <tr>
-                  <th className="text-left p-4">
-                    Name
-                  </th>
-
-                  <th className="text-left p-4">
-                    Employee ID
-                  </th>
-
-                  <th className="text-left p-4">
-  Role
-</th>
-
-<th className="text-left p-4">
-  Actions
-</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {employees.map(
-                  (employee: any) => (
-                    <tr
-                      key={employee.id}
-                      className="border-t border-white/10 hover:bg-zinc-800 transition"
-                    >
-                      <td className="p-4 font-medium">
-  <Link
-    href={`/employees/${employee.id}`}
-    className="hover:text-blue-400"
-  >
-    {employee.name}
-  </Link>
-</td>
-
-                      <td className="p-4 text-zinc-400">
-                        {
-                          employee.employeeId
-                        }
-                      </td>
-
-                      <td className="p-4 capitalize">
-  {employee.role}
-</td>
-
-<td className="p-4">
-  {employee.role !== "admin" && (
-    <>
-  <ResetPassword
-    id={employee.id}
-  />
-
-  <DeleteEmployee
-    id={employee.id}
-    employeeId={
-      employee.employeeId
-    }
-  />
-</>
-  )}
-</td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+    <div className="p-8 max-w-6xl mx-auto animate-slide-up">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Employee Management</h1>
+          <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+            {employees.length} team member{employees.length !== 1 ? "s" : ""}
+          </p>
+        </div>
       </div>
-    </main>
+
+      <AddEmployeeForm />
+
+      {employees.length === 0 ? (
+        <div
+          className="rounded-2xl p-12 text-center"
+          style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <h3 className="text-lg font-semibold text-white mb-1">No employees found</h3>
+          <p className="text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>Create your first employee to get started.</p>
+        </div>
+      ) : (
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.08)" }}
+        >
+          <table className="w-full">
+            <thead>
+              <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                {["Name", "Employee ID", "Role", "Actions"].map((h) => (
+                  <th
+                    key={h}
+                    className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: "rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.02)" }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((employee: any, i) => (
+                <tr
+                  key={employee.id}
+                  className="transition-colors duration-150 hover:bg-white/[0.04]"
+                  style={{ borderBottom: i < employees.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none" }}
+                >
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                        style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.3), rgba(79,70,229,0.2))", color: "#c4b5fd" }}
+                      >
+                        {employee.name?.[0]?.toUpperCase()}
+                      </div>
+                      <Link href={`/employees/${employee.id}`} className="text-sm font-medium text-white hover:text-violet-400 transition-colors">
+                        {employee.name}
+                      </Link>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    {employee.employeeId}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span
+                      className="text-xs font-semibold px-2.5 py-1 rounded-full capitalize"
+                      style={
+                        employee.role === "admin"
+                          ? { background: "rgba(124,58,237,0.15)", color: "#c4b5fd" }
+                          : { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.6)" }
+                      }
+                    >
+                      {employee.role}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {employee.role !== "admin" && (
+                      <div className="flex items-center gap-2">
+                        <ResetPassword id={employee.id} />
+                        <DeleteEmployee id={employee.id} employeeId={employee.employeeId} />
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

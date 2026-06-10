@@ -1,317 +1,225 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-
 import DeleteEmployee from "@/components/employees/delete-employee";
 import ResetPassword from "@/components/employees/reset-password";
 
 async function getEmployee(id: string) {
   return prisma.user.findUnique({
-    where: {
-      id,
-    },
-    include: {
-      leads: true,
-    },
+    where: { id },
+    include: { leads: true },
   });
 }
 
-export default async function EmployeeProfilePage({
-  params,
-}: {
-  params: Promise<{
-    id: string;
-  }>;
-}) {
+const statusConfig: Record<string, { color: string; bg: string }> = {
+  new: { color: "#a5b4fc", bg: "rgba(99,102,241,0.15)" },
+  contacted: { color: "#67e8f9", bg: "rgba(6,182,212,0.15)" },
+  proposal: { color: "#fcd34d", bg: "rgba(245,158,11,0.15)" },
+  won: { color: "#6ee7b7", bg: "rgba(16,185,129,0.15)" },
+  lost: { color: "#fca5a5", bg: "rgba(239,68,68,0.15)" },
+};
+
+export default async function EmployeeProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const employee = await getEmployee(id);
+  if (!employee) notFound();
 
-  const employee =
-    await getEmployee(id);
+  const totalLeads = employee.leads.length;
+  const newLeads = employee.leads.filter((l) => l.status === "new").length;
+  const contactedLeads = employee.leads.filter((l) => l.status === "contacted").length;
+  const proposalLeads = employee.leads.filter((l) => l.status === "proposal").length;
+  const wonLeads = employee.leads.filter((l) => l.status === "won").length;
+  const lostLeads = employee.leads.filter((l) => l.status === "lost").length;
+  const conversionRate = totalLeads > 0 ? ((wonLeads / totalLeads) * 100).toFixed(1) : "0";
 
-  if (!employee) {
-    notFound();
-  }
-
-  const totalLeads =
-    employee.leads.length;
-
-  const newLeads =
-    employee.leads.filter(
-      (lead) =>
-        lead.status === "new"
-    ).length;
-
-  const contactedLeads =
-    employee.leads.filter(
-      (lead) =>
-        lead.status ===
-        "contacted"
-    ).length;
-
-  const proposalLeads =
-    employee.leads.filter(
-      (lead) =>
-        lead.status ===
-        "proposal"
-    ).length;
-
-  const wonLeads =
-    employee.leads.filter(
-      (lead) =>
-        lead.status === "won"
-    ).length;
-
-  const lostLeads =
-    employee.leads.filter(
-      (lead) =>
-        lead.status === "lost"
-    ).length;
-
-  const conversionRate =
-    totalLeads > 0
-      ? (
-          (wonLeads /
-            totalLeads) *
-          100
-        ).toFixed(1)
-      : "0";
+  const breakdown = [
+    { label: "New", value: newLeads, color: "#a5b4fc", bg: "rgba(99,102,241,0.12)" },
+    { label: "Contacted", value: contactedLeads, color: "#67e8f9", bg: "rgba(6,182,212,0.12)" },
+    { label: "Proposal", value: proposalLeads, color: "#fcd34d", bg: "rgba(245,158,11,0.12)" },
+    { label: "Won", value: wonLeads, color: "#6ee7b7", bg: "rgba(16,185,129,0.12)" },
+    { label: "Lost", value: lostLeads, color: "#fca5a5", bg: "rgba(239,68,68,0.12)" },
+  ];
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white p-10">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <div className="flex items-center justify-between">
-          <Link
-            href="/employees"
-            className="bg-zinc-900 border border-white/10 px-5 py-3 rounded-xl hover:bg-zinc-800 transition"
-          >
-            ← Back to Employees
-          </Link>
+    <div className="p-8 max-w-6xl mx-auto animate-slide-up">
+      {/* Back */}
+      <div className="mb-6">
+        <Link
+          href="/employees"
+          className="inline-flex items-center gap-2 text-sm font-medium transition-all duration-200 hover:text-white"
+          style={{ color: "rgba(255,255,255,0.5)" }}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Employees
+        </Link>
+      </div>
+
+      {/* Header card */}
+      <div
+        className="rounded-2xl p-6 mb-6 card-accent-border"
+        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-bold"
+              style={{ background: "linear-gradient(135deg, #7c3aed, #4f46e5)", color: "white" }}
+            >
+              {employee.name?.[0]?.toUpperCase()}
+            </div>
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-white">{employee.name}</h1>
+                {wonLeads >= 5 && (
+                  <span
+                    className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                    style={{ background: "rgba(234,179,8,0.15)", color: "#fcd34d", border: "1px solid rgba(234,179,8,0.3)" }}
+                  >
+                    🏆 Top Performer
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <span className="text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
+                  ID: {employee.employeeId}
+                </span>
+                <span
+                  className="text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize"
+                  style={
+                    employee.role === "admin"
+                      ? { background: "rgba(124,58,237,0.15)", color: "#c4b5fd" }
+                      : { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.6)" }
+                  }
+                >
+                  {employee.role}
+                </span>
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  Joined {new Date(employee.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </div>
 
           {employee.role !== "admin" && (
-            <div className="flex items-center gap-4">
-              <ResetPassword
-                id={employee.id}
-              />
-
-              <DeleteEmployee
-                id={employee.id}
-                employeeId={
-                  employee.employeeId
-                }
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
-          <h1 className="text-4xl font-bold mb-4">
-            Employee Profile
-          </h1>
-
-          {wonLeads >= 5 && (
-            <div className="inline-flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 px-4 py-2 rounded-xl mb-6">
-              🏆 Top Performer
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div>
-              <p className="text-zinc-400">
-                Name
-              </p>
-
-              <h2 className="text-2xl font-semibold">
-                {employee.name}
-              </h2>
-            </div>
-
-            <div>
-              <p className="text-zinc-400">
-                Employee ID
-              </p>
-
-              <h2 className="text-xl">
-                {
-                  employee.employeeId
-                }
-              </h2>
-            </div>
-
-            <div>
-              <p className="text-zinc-400">
-                Role
-              </p>
-
-              <h2 className="text-xl capitalize">
-                {employee.role}
-              </h2>
-            </div>
-
-            <div>
-              <p className="text-zinc-400">
-                Created
-              </p>
-
-              <h2 className="text-xl">
-                {new Date(
-                  employee.createdAt
-                ).toLocaleDateString()}
-              </h2>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-4 gap-6">
-          <div className="bg-zinc-900 rounded-3xl p-6 border border-white/10">
-            <p className="text-zinc-400">
-              Total Leads
-            </p>
-
-            <h2 className="text-4xl font-bold mt-2">
-              {totalLeads}
-            </h2>
-          </div>
-
-          <div className="bg-zinc-900 rounded-3xl p-6 border border-white/10">
-            <p className="text-zinc-400">
-              Won Leads
-            </p>
-
-            <h2 className="text-4xl font-bold mt-2">
-              {wonLeads}
-            </h2>
-          </div>
-
-          <div className="bg-zinc-900 rounded-3xl p-6 border border-white/10">
-            <p className="text-zinc-400">
-              Lost Leads
-            </p>
-
-            <h2 className="text-4xl font-bold mt-2">
-              {lostLeads}
-            </h2>
-          </div>
-
-          <div className="bg-zinc-900 rounded-3xl p-6 border border-white/10">
-            <p className="text-zinc-400">
-              Performance
-            </p>
-
-            <div className="mt-4 space-y-2">
-              <p>
-                Leads: {totalLeads}
-              </p>
-
-              <p>
-                Won: {wonLeads}
-              </p>
-
-              <p className="font-bold text-2xl">
-                {conversionRate}%
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
-          <h2 className="text-2xl font-bold mb-6">
-            Lead Breakdown
-          </h2>
-
-          <div className="grid md:grid-cols-5 gap-4">
-            <div>
-              <p className="text-zinc-400">
-                New
-              </p>
-
-              <h3 className="text-3xl font-bold">
-                {newLeads}
-              </h3>
-            </div>
-
-            <div>
-              <p className="text-zinc-400">
-                Contacted
-              </p>
-
-              <h3 className="text-3xl font-bold">
-                {
-                  contactedLeads
-                }
-              </h3>
-            </div>
-
-            <div>
-              <p className="text-zinc-400">
-                Proposal
-              </p>
-
-              <h3 className="text-3xl font-bold">
-                {
-                  proposalLeads
-                }
-              </h3>
-            </div>
-
-            <div>
-              <p className="text-zinc-400">
-                Won
-              </p>
-
-              <h3 className="text-3xl font-bold">
-                {wonLeads}
-              </h3>
-            </div>
-
-            <div>
-              <p className="text-zinc-400">
-                Lost
-              </p>
-
-              <h3 className="text-3xl font-bold">
-                {lostLeads}
-              </h3>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-zinc-900 border border-white/10 rounded-3xl p-8">
-          <h2 className="text-2xl font-bold mb-6">
-            Recent Leads
-          </h2>
-
-          {employee.leads.length ===
-          0 ? (
-            <p className="text-zinc-400">
-              No leads assigned
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {employee.leads
-                .slice(0, 10)
-                .map((lead) => (
-                  <Link
-                    key={lead.id}
-                    href={`/leads/${lead.id}`}
-                    className="block border border-white/10 rounded-2xl p-4 hover:bg-zinc-800 transition"
-                  >
-                    <h3 className="font-semibold">
-                      {lead.name}
-                    </h3>
-
-                    <p className="text-zinc-400 text-sm">
-                      {lead.company}
-                    </p>
-
-                    <p className="text-zinc-500 text-sm capitalize">
-                      {lead.status}
-                    </p>
-                  </Link>
-                ))}
+            <div className="flex items-center gap-2">
+              <ResetPassword id={employee.id} />
+              <DeleteEmployee id={employee.id} employeeId={employee.employeeId} />
             </div>
           )}
         </div>
       </div>
-    </main>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: "Total Leads", value: totalLeads, color: "#a78bfa" },
+          { label: "Won", value: wonLeads, color: "#6ee7b7" },
+          { label: "Lost", value: lostLeads, color: "#fca5a5" },
+          { label: "Conversion", value: `${conversionRate}%`, color: "#93c5fd" },
+        ].map((s) => (
+          <div
+            key={s.label}
+            className="rounded-2xl p-5 card-accent-border"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+          >
+            <p className="text-xs font-medium uppercase tracking-wider mb-2" style={{ color: "rgba(255,255,255,0.4)" }}>
+              {s.label}
+            </p>
+            <p className="text-3xl font-bold" style={{ color: s.color }}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Breakdown */}
+      <div
+        className="rounded-2xl p-6 mb-6"
+        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+      >
+        <h2 className="text-base font-semibold text-white mb-5">Lead Breakdown</h2>
+        <div className="grid grid-cols-5 gap-3">
+          {breakdown.map((b) => (
+            <div key={b.label} className="rounded-xl p-4 text-center" style={{ background: b.bg }}>
+              <p className="text-2xl font-bold" style={{ color: b.color }}>{b.value}</p>
+              <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.5)" }}>{b.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-5">
+          <div className="flex justify-between text-xs mb-1.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+            <span>Conversion rate</span>
+            <span style={{ color: "#a78bfa" }}>{conversionRate}%</span>
+          </div>
+          <div className="h-2 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+            <div
+              className="h-2 rounded-full transition-all duration-700"
+              style={{
+                width: `${Math.min(Number(conversionRate), 100)}%`,
+                background: "linear-gradient(90deg, #7c3aed, #4f46e5)",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Recent leads */}
+      <div
+        className="rounded-2xl p-6"
+        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+      >
+        <h2 className="text-base font-semibold text-white mb-4">
+          Recent Leads
+          <span
+            className="ml-2 text-xs px-2 py-0.5 rounded-full font-normal"
+            style={{ background: "rgba(124,58,237,0.2)", color: "#c4b5fd" }}
+          >
+            {employee.leads.length}
+          </span>
+        </h2>
+
+        {employee.leads.length === 0 ? (
+          <p className="text-sm py-4 text-center" style={{ color: "rgba(255,255,255,0.35)" }}>No leads assigned</p>
+        ) : (
+          <div className="space-y-2">
+            {employee.leads.slice(0, 10).map((lead) => {
+              const sc = statusConfig[lead.status] || statusConfig.new;
+              return (
+                <Link
+                  key={lead.id}
+                  href={`/leads/${lead.id}`}
+                  className="flex items-center justify-between p-3 rounded-xl transition-colors duration-150 group hover:bg-white/5"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                      style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.3), rgba(79,70,229,0.2))", color: "#c4b5fd" }}
+                    >
+                      {lead.name?.[0]?.toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white group-hover:text-violet-300 transition-colors">
+                        {lead.name}
+                      </p>
+                      {lead.company && (
+                        <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{lead.company}</p>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className="text-xs font-semibold px-2.5 py-1 rounded-full capitalize"
+                    style={{ background: sc.bg, color: sc.color }}
+                  >
+                    {lead.status}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
