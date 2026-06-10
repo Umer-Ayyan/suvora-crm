@@ -32,7 +32,7 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
   const cfg = STATUS_CFG[q.status] ?? STATUS_CFG.draft;
 
   return (
-    <div className="p-8 max-w-4xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-4xl mx-auto animate-slide-up">
       {/* Back */}
       <Link href="/quotations" className="inline-flex items-center gap-2 text-sm mb-6 transition-colors"
         style={{ color: "rgba(255,255,255,0.4)" }}>
@@ -43,7 +43,7 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
       </Link>
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-8">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-white">{q.number}</h1>
@@ -104,6 +104,7 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
 
       {/* Line items */}
       <div className="rounded-2xl overflow-hidden mb-6" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
@@ -125,6 +126,7 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Totals + Notes */}

@@ -138,7 +138,7 @@ export default async function LeadsPage({
   );
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto animate-slide-up">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Leads Pipeline</h1>
         <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>

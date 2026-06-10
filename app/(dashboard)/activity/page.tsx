@@ -64,7 +64,7 @@ export default async function ActivityPage({
   });
 
   return (
-    <div className="p-8 max-w-5xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-5xl mx-auto animate-slide-up">
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-white">Activity Log</h1>
         <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>

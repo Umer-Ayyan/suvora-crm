@@ -119,7 +119,7 @@ export default async function DashboardPage() {
     const overdueLeads = employee.leads.filter((l: any) => l.followUpDate && new Date(l.followUpDate) < today && l.status !== "won");
 
     return (
-      <div className="p-8 max-w-7xl mx-auto animate-slide-up">
+      <div className="p-4 lg:p-8 max-w-7xl mx-auto animate-slide-up">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">My Dashboard</h1>
           <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
@@ -166,7 +166,7 @@ export default async function DashboardPage() {
   const stats = await getAdminStats();
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto animate-slide-up">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Admin Dashboard</h1>
         <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>

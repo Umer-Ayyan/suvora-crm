@@ -46,8 +46,8 @@ export default async function InvoicesPage() {
   const unpaidRevenue = [...unpaid, ...overdue].reduce((s, i) => s + i.total, 0);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-slide-up">
-      <div className="flex items-center justify-between mb-7">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto animate-slide-up">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-7">
         <div>
           <h1 className="text-2xl font-bold text-white">Invoices</h1>
           <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>Track and manage client invoices</p>
@@ -83,6 +83,7 @@ export default async function InvoicesPage() {
         </div>
       ) : (
         <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
@@ -131,6 +132,7 @@ export default async function InvoicesPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

@@ -51,7 +51,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const wonRevenue = client.leads.filter((l) => l.status === "won").reduce((s, l) => s + (l.dealValue || 0), 0);
 
   return (
-    <div className="p-8 max-w-6xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-6xl mx-auto animate-slide-up">
       {/* Back */}
       <Link href="/clients" className="inline-flex items-center gap-2 text-sm font-medium mb-6 transition-all hover:text-white"
         style={{ color: "rgba(255,255,255,0.5)" }}>

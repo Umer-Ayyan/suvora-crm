@@ -33,7 +33,7 @@ export function SkeletonRow() {
 
 export function SkeletonDashboard() {
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto">
       <Skeleton className="h-7 w-48 mb-2" />
       <Skeleton className="h-4 w-64 mb-8" />
 
@@ -82,7 +82,7 @@ export function SkeletonDashboard() {
 
 export function SkeletonLeads() {
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto">
       <Skeleton className="h-7 w-44 mb-2" />
       <Skeleton className="h-4 w-32 mb-6" />
       <Skeleton className="h-10 w-36 rounded-xl mb-6" />
@@ -106,7 +106,7 @@ export function SkeletonLeads() {
 
 export function SkeletonLeadDetail() {
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto">
       <Skeleton className="h-4 w-28 mb-6" />
 
       <div className="flex items-center gap-4 mb-8">
@@ -142,7 +142,7 @@ export function SkeletonLeadDetail() {
 
 export function SkeletonEmployees() {
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-6xl mx-auto">
       <Skeleton className="h-7 w-52 mb-2" />
       <Skeleton className="h-4 w-32 mb-6" />
       <Skeleton className="h-10 w-40 rounded-xl mb-6" />
@@ -168,7 +168,7 @@ export function SkeletonEmployees() {
 
 export function SkeletonEmployeeDetail() {
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 lg:p-8 max-w-6xl mx-auto">
       <Skeleton className="h-4 w-36 mb-6" />
 
       <div className="rounded-2xl p-6 mb-6" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>

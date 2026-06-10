@@ -63,8 +63,8 @@ export default async function AttendancePage() {
   const estimatedDeduction = (totalDeductionPct / 100) * dailySalary;
 
   return (
-    <div className="p-8 max-w-4xl mx-auto animate-slide-up">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 lg:p-8 max-w-4xl mx-auto animate-slide-up">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">My Attendance</h1>
           <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>

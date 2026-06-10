@@ -66,7 +66,7 @@ export default function CalendarClient({ leads, tasks }: { leads: any[]; tasks: 
   const totalEvents = events.filter((e) => e.date.getMonth() === month && e.date.getFullYear() === year).length;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto animate-slide-up">
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-white">Calendar</h1>
         <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
@@ -79,7 +79,7 @@ export default function CalendarClient({ leads, tasks }: { leads: any[]; tasks: 
         <div className="md:col-span-2 rounded-2xl p-6"
           style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
           {/* Header */}
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
             <button onClick={prev} className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10"
               style={{ color: "rgba(255,255,255,0.6)" }}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

@@ -85,7 +85,7 @@ export default async function IntegrationsPage() {
   const categories = [...new Set(INTEGRATIONS.map((i) => i.category))];
 
   return (
-    <div className="p-8 max-w-5xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-5xl mx-auto animate-slide-up">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Integrations</h1>
         <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>

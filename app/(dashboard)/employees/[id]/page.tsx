@@ -67,7 +67,7 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
   const lateDays    = employee.attendances.filter((a) => a.status === "late").length;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-6xl mx-auto animate-slide-up">
       {/* Back */}
       <div className="mb-6">
         <Link href="/employees" className="inline-flex items-center gap-2 text-sm font-medium hover:text-white transition-all" style={{ color: "rgba(255,255,255,0.5)" }}>

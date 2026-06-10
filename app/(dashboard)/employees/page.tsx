@@ -20,7 +20,7 @@ export default async function EmployeesPage() {
   const employeeCount = employees.filter((e) => e.role === "employee").length;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-6xl mx-auto animate-slide-up">
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-white">Team Management</h1>
         <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
@@ -42,6 +42,7 @@ export default async function EmployeesPage() {
         </div>
       ) : (
         <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
@@ -111,6 +112,7 @@ export default async function EmployeesPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

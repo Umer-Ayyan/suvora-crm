@@ -96,7 +96,7 @@ export default async function AnalyticsPage() {
   const taskMap   = Object.fromEntries(taskStats.map((t) => [t.status, t._count.id]));
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto animate-slide-up">
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-white">Analytics</h1>
         <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>Sales performance, pipeline health & team metrics</p>
@@ -158,7 +158,7 @@ export default async function AnalyticsPage() {
           <div className="space-y-3">
             {statusBreakdown.map((s) => (
               <div key={s.key}>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-1">
                   <span className="text-xs font-medium" style={{ color: s.color }}>{s.label}</span>
                   <span className="text-xs font-semibold text-white">{s.count} <span style={{ color: "rgba(255,255,255,0.4)" }}>({totalLeads > 0 ? ((s.count/totalLeads)*100).toFixed(0) : 0}%)</span></span>
                 </div>

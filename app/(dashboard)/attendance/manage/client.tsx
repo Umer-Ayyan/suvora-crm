@@ -276,6 +276,7 @@ export default function AttendanceManageClient({
         className="rounded-2xl overflow-hidden"
         style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.08)" }}
       >
+        <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
@@ -360,6 +361,7 @@ export default function AttendanceManageClient({
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

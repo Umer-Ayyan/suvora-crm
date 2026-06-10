@@ -35,7 +35,7 @@ export default async function AttendanceManagePage({
   });
 
   return (
-    <div className="p-8 max-w-7xl mx-auto animate-slide-up">
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto animate-slide-up">
       {/* Back */}
       <div className="mb-5">
         <Link
@@ -50,7 +50,7 @@ export default async function AttendanceManagePage({
         </Link>
       </div>
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Attendance Management</h1>
           <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
