@@ -7,6 +7,7 @@ import AddActivity from "@/components/leads/add-activity";
 import DeleteActivity from "@/components/leads/delete-activity";
 import AddNote from "@/components/leads/add-note";
 import LeadEditForm from "@/components/leads/lead-edit-form";
+import ConvertToClient from "@/components/leads/convert-to-client";
 import Link from "next/link";
 
 async function getLead(id: string, userId: string, role: string) {
@@ -231,7 +232,22 @@ export default async function LeadDetailsPage({ params }: { params: Promise<{ id
         <div className="lg:col-span-8 space-y-6">
           {/* Management panel */}
           <div className="rounded-2xl p-6" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <h2 className="text-base font-semibold mb-5 text-white">Manage Lead</h2>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-white">Manage Lead</h2>
+              {lead.status === "won" && !lead.clientId && (role === "admin" || role === "manager") && (
+                <ConvertToClient leadId={lead.id} />
+              )}
+              {lead.status === "won" && lead.clientId && (
+                <Link href={`/clients/${lead.clientId}`}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors"
+                  style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#6ee7b7" }}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Client Created → View
+                </Link>
+              )}
+            </div>
             <LeadManagement
               leadId={lead.id}
               currentStatus={lead.status}

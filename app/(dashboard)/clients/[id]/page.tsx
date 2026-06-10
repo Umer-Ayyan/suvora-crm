@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
+import EditClientForm from "@/components/clients/edit-client-form";
 
 const STATUS_CFG: Record<string,{label:string;color:string;bg:string}> = {
   new:         { label:"New",         color:"#94a3b8", bg:"rgba(148,163,184,0.12)" },
@@ -24,6 +25,7 @@ const TASK_CFG: Record<string,{color:string}> = {
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
+  const role = (session.user as any).role;
 
   const { id } = await params;
 
@@ -75,13 +77,18 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             {client.industry && <span className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>🏭 {client.industry}</span>}
           </div>
         </div>
-        <span className={`text-xs font-semibold px-3 py-1.5 rounded-full capitalize`}
-          style={{
-            background: client.status === "active" ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
-            color: client.status === "active" ? "#6ee7b7" : "#f87171",
-          }}>
-          {client.status}
-        </span>
+        <div className="flex flex-col items-end gap-2">
+          <span className={`text-xs font-semibold px-3 py-1.5 rounded-full capitalize`}
+            style={{
+              background: client.status === "active" ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
+              color: client.status === "active" ? "#6ee7b7" : "#f87171",
+            }}>
+            {client.status}
+          </span>
+          {(role === "admin" || role === "manager") && (
+            <EditClientForm client={client} />
+          )}
+        </div>
       </div>
 
       {/* Stats */}
