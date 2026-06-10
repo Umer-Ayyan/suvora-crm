@@ -64,7 +64,7 @@ export default async function AnalyticsPage() {
 
   // ── Employee performance ──────────────────────────────────────────────────
   const employees = await prisma.user.findMany({
-    where: { role: { in: ["employee", "manager"] } },
+    where: { role: "employee" },
     include: { leads: { select: { status: true, dealValue: true } } },
     orderBy: { name: "asc" },
   });

@@ -86,7 +86,7 @@ export default async function LeadDetailsPage({ params }: { params: Promise<{ id
   );
 
   const allEmployees = role === "admin"
-    ? await prisma.user.findMany({ where: { role: { in: ["employee","manager"] } }, orderBy: { name: "asc" } })
+    ? await prisma.user.findMany({ where: { role: "employee" }, orderBy: { name: "asc" } })
     : [];
 
   const sConf = statusConfig[lead.status] || statusConfig.new;
