@@ -57,7 +57,7 @@ export default function AddLeadForm() {
   const labelStyle = { color: "rgba(255,255,255,0.45)" };
 
   return (
-    <div className="mb-6">
+    <div>
       {!open ? (
         <button
           onClick={() => setOpen(true)}
