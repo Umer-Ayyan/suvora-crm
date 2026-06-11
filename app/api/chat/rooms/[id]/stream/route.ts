@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { subscribe } from "@/lib/chat-broadcaster";
+import { getSessionUserId } from "@/lib/get-session-user-id";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const session = await getServerSession(authOptions);
   if (!session) return new Response("Unauthorized", { status: 401 });
 
-  const userId = (session.user as any).id;
+  const userId = await getSessionUserId(session);
+  if (!userId) return new Response("Unauthorized", { status: 401 });
   const isAdmin = (session.user as any).role === "admin";
   const { id: roomId } = await params;
 

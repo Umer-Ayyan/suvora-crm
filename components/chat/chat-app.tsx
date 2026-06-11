@@ -98,13 +98,15 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     };
 
     es.onerror = () => {
-      // SSE disconnected — reconnect after 2s
       es.close();
+      // Reload messages on reconnect then reconnect SSE after 2s
+      void loadMessages(activeRoomId);
       setTimeout(() => {
-        if (activeRoomId) {
-          const newEs = new EventSource(`/api/chat/rooms/${activeRoomId}/stream`);
-          esRef.current = newEs;
-        }
+        if (!activeRoomId) return;
+        const newEs = new EventSource(`/api/chat/rooms/${activeRoomId}/stream`);
+        esRef.current = newEs;
+        newEs.onmessage = es.onmessage;
+        newEs.onerror   = es.onerror;
       }, 2000);
     };
 

@@ -2,13 +2,16 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/get-session-user-id";
 import ChatApp from "@/components/chat/chat-app";
 
 export default async function ChatPage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
 
-  const userId = (session.user as any).id;
+  const userId = await getSessionUserId(session);
+  if (!userId) redirect("/login");
+
   const isAdmin = (session.user as any).role === "admin";
 
   // All employees for new chat
