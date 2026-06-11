@@ -230,7 +230,18 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
           void loadRooms();
           if (activeRoomIdRef.current === roomId) {
             scrollInstantRef.current = false;
-            setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg as Message]);
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === msg.id)) return prev;
+              const tempIdx = prev.findIndex(
+                (m) => m.tempId && m.senderId === msg.senderId && m.content === msg.content && m.status === "sending"
+              );
+              if (tempIdx !== -1) {
+                const next = [...prev];
+                next[tempIdx] = msg as Message;
+                return next;
+              }
+              return [...prev, msg as Message];
+            });
             void fetch(`/api/chat/rooms/${roomId}/read`, { method: "POST" });
           } else {
             setUnreadCounts((prev) => ({ ...prev, [roomId]: (prev[roomId] ?? 0) + 1 }));
@@ -285,7 +296,20 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
             return;
           }
           scrollInstantRef.current = false;
-          setMessages((prev) => prev.some((m) => m.id === data.id) ? prev : [...prev, data as Message]);
+          setMessages((prev) => {
+            // Already have it by real id
+            if (prev.some((m) => m.id === data.id)) return prev;
+            // Replace optimistic temp message (same sender + content, still pending)
+            const tempIdx = prev.findIndex(
+              (m) => m.tempId && m.senderId === data.senderId && m.content === data.content && m.status === "sending"
+            );
+            if (tempIdx !== -1) {
+              const next = [...prev];
+              next[tempIdx] = data as Message;
+              return next;
+            }
+            return [...prev, data as Message];
+          });
           void loadRooms();
         } catch { /* ignore */ }
       };
