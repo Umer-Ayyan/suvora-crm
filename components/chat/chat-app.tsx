@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase-client";
 
 type Employee = { id: string; name: string; employeeId: string; role: string; designation: string | null };
 type Member = { id: string; user: { id: string; name: string; employeeId: string; role: string; lastSeenAt: string | null } };
@@ -225,53 +226,65 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   // Keep ref in sync
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
 
-  // ── Active room polling — fetch new messages every 2.5s ────────────────────
-  // SSE does not work on Vercel serverless (different instances). Polling is reliable.
-  const lastMsgIdRef = useRef<string | null>(null);
+  // ── Supabase Realtime Broadcast — instant message delivery ────────────────
+  // Uses Supabase WebSocket channels (works on Vercel serverless, no SSE needed)
+  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
     if (!activeRoomId) return;
     void loadMessages(activeRoomId);
 
-    const pollMessages = async () => {
-      const roomId = activeRoomIdRef.current;
-      if (!roomId) return;
-      try {
-        const res = await fetch(`/api/chat/rooms/${roomId}/messages`);
-        if (!res.ok) return;
-        const fresh: Message[] = await res.json();
-        if (!fresh.length) return;
-        const latestId = fresh[fresh.length - 1].id;
-        if (latestId === lastMsgIdRef.current) return; // nothing new
-        lastMsgIdRef.current = latestId;
-        scrollInstantRef.current = false;
-        setMessages((prev) => {
-          // Merge: keep optimistic/sending messages, add any new server messages
-          const serverIds = new Set(fresh.map((m) => m.id));
-          const pendingOptimistic = prev.filter((m) => m.tempId && m.status === "sending");
-          // Replace confirmed messages that match pending optimistic ones
-          const merged = fresh.map((m) => {
-            const opt = pendingOptimistic.find((o) => o.senderId === m.senderId && o.content === m.content);
-            return opt ? { ...m } : m;
-          });
-          // Keep any still-pending optimistic messages not yet confirmed
-          const stillPending = pendingOptimistic.filter(
-            (o) => !fresh.some((m) => m.senderId === o.senderId && m.content === o.content)
-          );
-          // Keep failed messages
-          const failed = prev.filter((m) => m.status === "failed" && !serverIds.has(m.id));
-          return [...merged, ...stillPending, ...failed];
-        });
-        // Mark as read
-        void fetch(`/api/chat/rooms/${roomId}/read`, { method: "POST" });
-        // Refresh sidebar
-        void loadRooms();
-      } catch { /* silent */ }
-    };
+    // Clean up previous channel
+    if (realtimeChannelRef.current) {
+      void supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
 
-    lastMsgIdRef.current = null;
-    const t = setInterval(pollMessages, 2500);
-    return () => clearInterval(t);
+    const channelName = `room:${activeRoomId}`;
+    const ch = supabase.channel(channelName, { config: { broadcast: { self: false } } });
+
+    ch.on("broadcast", { event: "new_message" }, ({ payload }: { payload: Message }) => {
+      if (activeRoomIdRef.current !== activeRoomId) return;
+      scrollInstantRef.current = false;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === payload.id)) return prev;
+        // Replace matching optimistic message
+        const tempIdx = prev.findIndex(
+          (m) => m.tempId && m.senderId === payload.senderId && m.content === payload.content && m.status === "sending"
+        );
+        if (tempIdx !== -1) {
+          const next = [...prev];
+          next[tempIdx] = payload;
+          return next;
+        }
+        return [...prev, payload];
+      });
+      void fetch(`/api/chat/rooms/${activeRoomId}/read`, { method: "POST" });
+      void loadRooms();
+    })
+    .on("broadcast", { event: "edit_message" }, ({ payload }: { payload: { messageId: string; content: string } }) => {
+      setMessages((prev) => prev.map((m) =>
+        m.id === payload.messageId ? { ...m, content: payload.content, editedAt: new Date().toISOString() } : m
+      ));
+    })
+    .on("broadcast", { event: "delete_message" }, ({ payload }: { payload: { messageId: string } }) => {
+      spawnParticles(payload.messageId);
+      setVanishingIds((prev) => new Set([...prev, payload.messageId]));
+      setTimeout(() => {
+        setMessages((prev) => prev.map((m) =>
+          m.id === payload.messageId ? { ...m, isDeleted: true, content: "" } : m
+        ));
+        setVanishingIds((prev) => { const n = new Set(prev); n.delete(payload.messageId); return n; });
+      }, 420);
+    })
+    .subscribe();
+
+    realtimeChannelRef.current = ch;
+
+    return () => {
+      void supabase.removeChannel(ch);
+      realtimeChannelRef.current = null;
+    };
   }, [activeRoomId, loadMessages, loadRooms]);
 
   // ── All rooms poll — detect unread counts & send push notifications ─────────
@@ -407,6 +420,11 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
         const confirmed: Message = await res.json();
         // Replace optimistic message with confirmed one
         setMessages((prev) => prev.map((m) => m.tempId === tempId ? confirmed : m));
+        // Broadcast to other room members via Supabase Realtime
+        void realtimeChannelRef.current?.send({
+          type: "broadcast", event: "new_message", payload: confirmed,
+        });
+        void loadRooms();
       } else {
         // Mark as failed
         setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
@@ -419,15 +437,20 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
   async function saveEdit(msgId: string) {
     if (!editContent.trim() || !activeRoomId) return;
+    const newContent = editContent.trim();
     // Optimistic update
     setMessages((prev) => prev.map((m) =>
-      m.id === msgId ? { ...m, content: editContent.trim(), editedAt: new Date().toISOString() } : m
+      m.id === msgId ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m
     ));
     setEditingId(null);
     await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: editContent.trim() }),
+      body: JSON.stringify({ content: newContent }),
+    });
+    // Broadcast edit
+    void realtimeChannelRef.current?.send({
+      type: "broadcast", event: "edit_message", payload: { messageId: msgId, content: newContent },
     });
   }
 
@@ -549,6 +572,12 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ deleteType }),
     });
+    // Broadcast delete to other members (only for "everyone" delete)
+    if (deleteType === "everyone") {
+      void realtimeChannelRef.current?.send({
+        type: "broadcast", event: "delete_message", payload: { messageId: msgId },
+      });
+    }
   }
 
   // Retry a failed message
@@ -564,6 +593,9 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
       if (res.ok) {
         const confirmed: Message = await res.json();
         setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? confirmed : m));
+        void realtimeChannelRef.current?.send({
+          type: "broadcast", event: "new_message", payload: confirmed,
+        });
       } else {
         setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "failed" } : m));
       }
