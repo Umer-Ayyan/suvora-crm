@@ -274,6 +274,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
           }
           if (data.__type === "delete") {
             // Animate vanish first, then show deleted placeholder
+            spawnParticles(data.messageId);
             setVanishingIds((prev) => new Set([...prev, data.messageId]));
             setTimeout(() => {
               setMessages((prev) => prev.map((m) =>
@@ -420,11 +421,50 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     });
   }
 
+  function spawnParticles(msgId: string) {
+    const bubble = document.querySelector(`[data-msgid="${msgId}"] .msg-bubble`) as HTMLElement | null;
+    if (!bubble) return;
+    const rect = bubble.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    // Colors matching the bubble accent palette
+    const colors = ["#a78bfa","#7c3aed","#c4b5fd","#818cf8","#60a5fa","#f0abfc","#fff","#e879f9"];
+
+    // 18 particles: mix of dots and shards
+    const count = 18;
+    for (let i = 0; i < count; i++) {
+      const angle = (360 / count) * i + (Math.random() * 20 - 10);
+      const dist = 40 + Math.random() * 70; // px distance travelled
+      const rad = (angle * Math.PI) / 180;
+      const tx = Math.cos(rad) * dist;
+      const ty = Math.sin(rad) * dist;
+      const size = 3 + Math.random() * 5;
+      const dur = 0.45 + Math.random() * 0.35;
+      const delay = Math.random() * 0.08;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const isShard = Math.random() > 0.6;
+
+      const el = document.createElement("div");
+      el.className = `msg-particle${isShard ? " shard" : ""}`;
+      el.style.cssText = `
+        left:${cx - size / 2}px; top:${cy - size / 2}px;
+        width:${size}px; height:${isShard ? size * 0.6 : size}px;
+        background:${color};
+        --tx:translateX(${tx}px); --ty:translateY(${ty}px);
+        --dur:${dur}s; --delay:${delay}s;
+      `;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), (dur + delay) * 1000 + 100);
+    }
+  }
+
   async function deleteMessage(msgId: string, deleteType: "everyone" | "me") {
     if (!activeRoomId) return;
     setMenuMsgId(null);
 
-    // Step 1: start vanish animation
+    // Step 1: spawn particles from bubble position, then start vanish animation
+    spawnParticles(msgId);
     setVanishingIds((prev) => new Set([...prev, msgId]));
 
     // Step 2: after animation completes, apply the actual state change
@@ -749,6 +789,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
                 return (
                   <div key={msg.tempId ?? msg.id}
+                    data-msgid={msg.id}
                     className={isVanishing ? "msg-vanishing" : ""}
                     onClick={() => setMenuMsgId(null)}>
                     {/* Date separator */}
