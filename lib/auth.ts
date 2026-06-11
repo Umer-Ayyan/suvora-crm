@@ -77,6 +77,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           employeeId: user.employeeId,
           role: user.role,
+          department: user.department ?? null,
           customRoleId: user.customRoleId ?? null,
           customRoleName: user.customRole?.name ?? null,
           permissions,
@@ -90,21 +91,34 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id           = (user as any).id;
-        token.role         = (user as any).role;
-        token.employeeId   = (user as any).employeeId;
-        token.customRoleId = (user as any).customRoleId;
+        token.id             = (user as any).id;
+        token.role           = (user as any).role;
+        token.employeeId     = (user as any).employeeId;
+        token.department     = (user as any).department;
+        token.customRoleId   = (user as any).customRoleId;
         token.customRoleName = (user as any).customRoleName;
-        token.permissions  = (user as any).permissions;
+        token.permissions    = (user as any).permissions;
+        // Store sessionVersion at login time
+        const dbUser = await prisma.user.findUnique({ where: { id: (user as any).id }, select: { sessionVersion: true } });
+        token.sessionVersion = dbUser?.sessionVersion ?? 0;
+      } else if (token.id) {
+        // On every subsequent request, verify sessionVersion hasn't changed
+        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string }, select: { sessionVersion: true } });
+        if (!dbUser || (dbUser.sessionVersion ?? 0) !== (token.sessionVersion ?? 0)) {
+          // Session invalidated — return empty token to force sign-out
+          return {};
+        }
       }
       return token;
     },
 
     async session({ session, token }) {
+      if (!token.id) return { ...session, user: undefined as any }; // force sign-out
       // token.sub is automatically set by NextAuth to user.id — use as fallback
       (session.user as any).id           = (token.id ?? token.sub) as string;
       (session.user as any).role         = token.role as string;
       (session.user as any).employeeId   = token.employeeId as string;
+      (session.user as any).department   = token.department;
       (session.user as any).customRoleId = token.customRoleId;
       (session.user as any).customRoleName = token.customRoleName;
       (session.user as any).permissions  = token.permissions as Permissions;

@@ -54,6 +54,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { data: session } = useSession();
   const pathname = usePathname();
   const role = (session?.user as any)?.role;
+  const department = ((session?.user as any)?.department as string | null) ?? "";
   const permissions = (session?.user as any)?.permissions as Record<string, boolean> | undefined;
   const customRoleName = (session?.user as any)?.customRoleName as string | undefined;
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -81,8 +82,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     : role === "admin" ? "Admin" : role === "manager" ? "Manager" : "Employee";
 
   // Filter main nav items by permissions
+  const isSalesDept = department.toLowerCase().includes("sales");
   const visibleNavItems = NAV_ITEMS.filter((item) => {
-    if (role === "admin") return true;       // admin sees everything
+    if (role === "admin" || role === "manager") return true; // admin/manager see everything
+    // Leads: only sales department employees
+    if (item.href === "/leads" && role === "employee" && !isSalesDept) return false;
     if (!item.permKey) return true;          // no permission gate = always visible
     if (!permissions) return false;          // no permissions loaded yet
     return permissions[item.permKey] === true;

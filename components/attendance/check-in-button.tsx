@@ -15,15 +15,23 @@ export default function CheckInButton({ todayRecord, role }: { todayRecord: any;
   const [record, setRecord] = useState(todayRecord);
   const [time, setTime] = useState("");
   const [previewStatus, setPreviewStatus] = useState("present");
+  const [windowOpen, setWindowOpen] = useState(false);
 
   // Live clock + preview status in PKT
   useEffect(() => {
     function tick() {
       const now = new Date();
       const pkt = new Date(now.getTime() + 5 * 60 * 60 * 1000);
-      setTime(pkt.toUTCString().slice(17, 25));
       const h = pkt.getUTCHours();
       const m = pkt.getUTCMinutes();
+      // Format time as 12-hour
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      const ampm = h >= 12 ? "PM" : "AM";
+      setTime(`${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(pkt.getUTCSeconds()).padStart(2, "0")} ${ampm}`);
+
+      // Attendance window: 10:00 PM – 12:00 AM PKT (22:00–23:59)
+      setWindowOpen(h >= 22);
+
       // Night shift: 10 PM start. Compute minutes from shift start (22:00).
       let minutesFromStart: number;
       if (h >= 22) {
@@ -138,13 +146,19 @@ export default function CheckInButton({ todayRecord, role }: { todayRecord: any;
         ))}
       </div>
 
+      {!windowOpen && (
+        <div className="w-full py-3 rounded-2xl text-sm font-medium text-center"
+          style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)" }}>
+          🔒 Attendance opens at 10:00 PM PKT
+        </div>
+      )}
       <button
         onClick={handleCheckIn}
-        disabled={loading}
-        className="w-full py-4 rounded-2xl text-base font-bold text-white transition-all duration-200 disabled:opacity-60"
+        disabled={loading || !windowOpen}
+        className="w-full py-4 rounded-2xl text-base font-bold text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
         style={{
-          background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
-          boxShadow: "0 6px 30px rgba(124,58,237,0.4)",
+          background: windowOpen ? "linear-gradient(135deg, #7c3aed, #4f46e5)" : "rgba(255,255,255,0.08)",
+          boxShadow: windowOpen ? "0 6px 30px rgba(124,58,237,0.4)" : "none",
         }}
       >
         {loading ? (
@@ -155,7 +169,7 @@ export default function CheckInButton({ todayRecord, role }: { todayRecord: any;
             </svg>
             Marking attendance...
           </span>
-        ) : "Mark Attendance"}
+        ) : windowOpen ? "Mark Attendance" : "Attendance Closed"}
       </button>
     </div>
   );

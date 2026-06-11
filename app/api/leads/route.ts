@@ -20,8 +20,14 @@ export async function GET(req: NextRequest) {
     const assignedTo = searchParams.get("assignedTo");
 
     const where: any = {};
-    if (user.role === "employee") where.createdById = user.id;
-    else if (assignedTo) where.createdById = assignedTo;
+    // Non-admin/manager: only sales department employees can see leads
+    if (user.role === "employee") {
+      const isSales = user.department?.toLowerCase().includes("sales");
+      if (!isSales) return NextResponse.json([]);
+      where.createdById = user.id;
+    } else if (assignedTo) {
+      where.createdById = assignedTo;
+    }
     if (status)   where.status   = status;
     if (source)   where.source   = source;
     if (priority) where.priority = priority;

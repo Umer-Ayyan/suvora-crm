@@ -7,7 +7,8 @@ import bcrypt from "bcrypt";
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getServerSession(authOptions);
-    if ((session?.user as any)?.role !== "admin") {
+    const callerRole = (session?.user as any)?.role;
+    if (!["admin", "manager"].includes(callerRole)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
@@ -36,9 +37,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.status !== undefined)      data.status = body.status || "active";
     if (body.customRoleId !== undefined) data.customRoleId = body.customRoleId || null;
 
-    // Password reset
+    // Password reset — bump sessionVersion so that user's JWT is invalidated
     if (body.password?.trim()) {
       data.password = await bcrypt.hash(body.password.trim(), 10);
+      const cur = await prisma.user.findUnique({ where: { id }, select: { sessionVersion: true } });
+      data.sessionVersion = ((cur?.sessionVersion ?? 0) + 1);
     }
 
     if (Object.keys(data).length === 0) {

@@ -107,7 +107,7 @@ export default function NotificationBell() {
                       {n.message}
                     </p>
                     <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.25)" }}>
-                      {new Date(n.createdAt).toLocaleString("en-PK", { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" })}
+                      {new Date(n.createdAt).toLocaleString("en-PK", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit", hour12: true })}
                     </p>
                   </div>
                   <button onClick={() => deleteOne(n.id)}

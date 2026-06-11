@@ -320,9 +320,10 @@ model User {
   bankAccount  String?
   bloodGroup   String?
   gender       String?
-  status       String    @default("active") // active | inactive | terminated
-  lastSeenAt   DateTime?
-  createdAt    DateTime  @default(now())
+  status         String    @default("active") // active | inactive | terminated
+  lastSeenAt     DateTime?
+  sessionVersion Int       @default(0)
+  createdAt      DateTime  @default(now())
 
   leads             Lead[]
   activityLogs      ActivityLog[]

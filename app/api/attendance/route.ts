@@ -101,6 +101,21 @@ export async function POST(_req: NextRequest) {
 
     const now = new Date();
 
+    // ── Attendance window: 10:00 PM – 12:00 AM PKT only ──────────────────────
+    const pktNow2 = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    const pktHour = pktNow2.getUTCHours();
+    const pktMin  = pktNow2.getUTCMinutes();
+    // Allow: 22:00–23:59 (10 PM – midnight)
+    // Block: 0:00–21:59
+    const afterWindow = pktHour < 22; // before 10 PM
+    if (afterWindow || (pktHour === 0 && pktMin === 0)) {
+      return NextResponse.json(
+        { error: "Attendance can only be marked between 10:00 PM and 12:00 AM (PKT)" },
+        { status: 403 }
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Determine the attendance date in PKT (after-midnight check-ins count as previous day)
     const pktNow = new Date(now.getTime() + 5 * 60 * 60 * 1000);
     const todayDate = getAttendanceDatePKT(pktNow);

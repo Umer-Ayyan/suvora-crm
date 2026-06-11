@@ -36,7 +36,7 @@ function getAvatarColor(name: string) {
 }
 
 function formatTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(dateStr).toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
 function formatSidebarTime(dateStr: string) {
@@ -45,9 +45,9 @@ function formatSidebarTime(dateStr: string) {
   const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
   if (diff < 60) return "now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (diff < 604800) return d.toLocaleDateString([], { weekday: "short" });
-  return d.toLocaleDateString([], { day: "numeric", month: "short" });
+  if (diff < 86400) return d.toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", hour12: true });
+  if (diff < 604800) return d.toLocaleDateString("en-PK", { weekday: "short" });
+  return d.toLocaleDateString("en-PK", { day: "numeric", month: "short" });
 }
 
 function formatDateSeparator(dateStr: string) {
@@ -196,6 +196,13 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
   useEffect(() => { void loadRooms(); }, [loadRooms]);
 
+  // ── Request browser notification permission on mount ───────────────────────
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // Background poll every 12s
   useEffect(() => {
     const t = setInterval(() => void loadRooms(), 12000);
@@ -245,6 +252,18 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
             void fetch(`/api/chat/rooms/${roomId}/read`, { method: "POST" });
           } else {
             setUnreadCounts((prev) => ({ ...prev, [roomId]: (prev[roomId] ?? 0) + 1 }));
+            // Browser push notification when message arrives in a room NOT currently open
+            if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && msg.senderId !== currentUserId) {
+              const senderName = msg.sender?.name ?? "Someone";
+              const roomName = rooms.find((r) => r.id === roomId)
+                ? getRoomName(rooms.find((r) => r.id === roomId)!, currentUserId)
+                : "Team Chat";
+              new Notification(`${senderName} · ${roomName}`, {
+                body: msg.content?.slice(0, 80) || "New message",
+                icon: "/favicon.ico",
+                tag: roomId, // Replace existing notification from same room
+              });
+            }
           }
         } catch { /* ignore */ }
       };
@@ -452,34 +471,91 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
 
-    // Colors matching the bubble accent palette
-    const colors = ["#a78bfa","#7c3aed","#c4b5fd","#818cf8","#60a5fa","#f0abfc","#fff","#e879f9"];
+    // Telegram-like palette: purples, pinks, whites, blues
+    const colors = [
+      "#a78bfa", "#c4b5fd", "#7c3aed", "#e879f9",
+      "#f0abfc", "#818cf8", "#60a5fa", "#ffffff",
+      "#ddd6fe", "#fbcfe8", "#6ee7b7",
+    ];
 
-    // 18 particles: mix of dots and shards
-    const count = 18;
-    for (let i = 0; i < count; i++) {
-      const angle = (360 / count) * i + (Math.random() * 20 - 10);
-      const dist = 40 + Math.random() * 70; // px distance travelled
-      const rad = (angle * Math.PI) / 180;
-      const tx = Math.cos(rad) * dist;
-      const ty = Math.sin(rad) * dist;
-      const size = 3 + Math.random() * 5;
-      const dur = 0.45 + Math.random() * 0.35;
-      const delay = Math.random() * 0.08;
+    const TOTAL = 24; // more particles = more impressive
+
+    for (let i = 0; i < TOTAL; i++) {
+      // Spread angles evenly + slight jitter
+      const angle = ((Math.PI * 2) / TOTAL) * i + (Math.random() - 0.5) * 0.5;
+      // Vary distance — close and far particles
+      const dist = 35 + Math.random() * 90;
+      const tx = Math.cos(angle) * dist;
+      const ty = Math.sin(angle) * dist;
+
+      const size = 2 + Math.random() * 6;
+      const isRound = Math.random() > 0.35;
       const color = colors[Math.floor(Math.random() * colors.length)];
-      const isShard = Math.random() > 0.6;
+      const duration = 380 + Math.random() * 320; // ms
+      const delay = Math.random() * 60; // ms stagger
 
       const el = document.createElement("div");
-      el.className = `msg-particle${isShard ? " shard" : ""}`;
       el.style.cssText = `
-        left:${cx - size / 2}px; top:${cy - size / 2}px;
-        width:${size}px; height:${isShard ? size * 0.6 : size}px;
+        position:fixed;
+        left:${cx - size / 2}px;
+        top:${cy - size / 2}px;
+        width:${size}px;
+        height:${isRound ? size : size * 0.5}px;
+        border-radius:${isRound ? "50%" : "2px"};
         background:${color};
-        --tx:translateX(${tx}px); --ty:translateY(${ty}px);
-        --dur:${dur}s; --delay:${delay}s;
+        pointer-events:none;
+        z-index:99999;
+        will-change:transform,opacity;
       `;
       document.body.appendChild(el);
-      setTimeout(() => el.remove(), (dur + delay) * 1000 + 100);
+
+      // Use Web Animations API — reliable cross-browser, no CSS custom props needed
+      el.animate(
+        [
+          { transform: "translate(0,0) scale(1)",                     opacity: 1 },
+          { transform: `translate(${tx * 0.4}px,${ty * 0.4}px) scale(1.1)`, opacity: 1,   offset: 0.15 },
+          { transform: `translate(${tx}px,${ty}px) scale(0)`,         opacity: 0 },
+        ],
+        {
+          duration,
+          delay,
+          easing: "cubic-bezier(0.15, 0.8, 0.35, 1)",
+          fill: "forwards",
+        }
+      ).onfinish = () => el.remove();
+    }
+
+    // Extra: 6 slightly bigger "glow" orbs for depth
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 20 + Math.random() * 50;
+      const tx = Math.cos(angle) * dist;
+      const ty = Math.sin(angle) * dist;
+      const size = 7 + Math.random() * 8;
+      const color = colors[Math.floor(Math.random() * 4)]; // purples only
+      const el = document.createElement("div");
+      el.style.cssText = `
+        position:fixed;
+        left:${cx - size / 2}px;
+        top:${cy - size / 2}px;
+        width:${size}px;
+        height:${size}px;
+        border-radius:50%;
+        background:${color};
+        opacity:0.45;
+        pointer-events:none;
+        z-index:99998;
+        filter:blur(2px);
+        will-change:transform,opacity;
+      `;
+      document.body.appendChild(el);
+      el.animate(
+        [
+          { transform: "translate(0,0) scale(1)",              opacity: 0.45 },
+          { transform: `translate(${tx}px,${ty}px) scale(0)`, opacity: 0 },
+        ],
+        { duration: 300 + Math.random() * 200, delay: Math.random() * 40, easing: "ease-out", fill: "forwards" }
+      ).onfinish = () => el.remove();
     }
   }
 
@@ -568,9 +644,12 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     <div className="flex overflow-hidden" style={{ height: "calc(100vh - 57px)", background: "#0a0a14" }}>
 
       {/* ════════════════════════════════════════════════════════════════════
-          SIDEBAR
+          SIDEBAR — full width on mobile when no chat open, fixed column on desktop
       ════════════════════════════════════════════════════════════════════ */}
-      <div className="flex flex-col flex-shrink-0" style={{ width: 300, background: "#0f0f1c", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className={`flex flex-col flex-shrink-0 ${activeRoomId ? "hidden md:flex" : "flex w-full md:w-auto"}`}
+        style={{ width: undefined, minWidth: 0 }}
+      >
+      <div className="flex flex-col h-full md:w-[300px] w-full" style={{ background: "#0f0f1c", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-4 pb-3 flex-shrink-0">
@@ -700,11 +779,12 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
           </div>
         </div>
       </div>
+      </div>{/* close inner sidebar div */}
 
       {/* ════════════════════════════════════════════════════════════════════
-          CHAT AREA
+          CHAT AREA — hidden on mobile when no room selected (sidebar shown instead)
       ════════════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col overflow-hidden" style={{ background: "#0d0d1a" }}>
+      <div className={`flex-1 flex flex-col overflow-hidden ${!activeRoomId ? "hidden md:flex" : "flex"}`} style={{ background: "#0d0d1a" }}>
 
         {!activeRoom ? (
           /* ── Empty state ── */
@@ -739,8 +819,16 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
               const otherLastSeen = otherMember ? (lastSeenMap[otherMember.user.id] ?? otherMember.user.lastSeenAt) : null;
               const online = otherMember ? isOnline(otherLastSeen) : false;
               return (
-            <div className="flex items-center gap-3 px-5 py-3.5 flex-shrink-0"
+            <div className="flex items-center gap-3 px-3 md:px-5 py-3.5 flex-shrink-0"
               style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+              {/* Back button — mobile only */}
+              <button className="md:hidden flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.06)" }}
+                onClick={() => setActiveRoomId(null)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} style={{ width: 16, height: 16 }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
               <div className="relative">
                 {activeRoom.type === "group"
                   ? <GroupAvatar size={40} />
