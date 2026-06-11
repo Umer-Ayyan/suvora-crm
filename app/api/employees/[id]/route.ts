@@ -13,6 +13,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const { id } = await params;
+
+    // Manager can only edit employees, not other managers or admins
+    if (callerRole === "manager") {
+      const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+      if (!target || target.role !== "employee") {
+        return NextResponse.json({ error: "Managers can only edit employees" }, { status: 403 });
+      }
+    }
+
     const body = await req.json();
     const data: any = {};
 

@@ -14,15 +14,20 @@ export default async function EmployeesPage() {
   const role = (session?.user as any)?.role;
   const currentUserId     = (session?.user as any)?.id;
   const currentEmployeeId = (session?.user as any)?.employeeId;
-  if (role !== "admin") redirect("/");
+  if (!["admin", "manager"].includes(role)) redirect("/");
 
+  const isAdmin   = role === "admin";
+  const isManager = role === "manager";
+
+  // Manager only sees employees (not admins/managers)
   const employees = await prisma.user.findMany({
+    where: isManager ? { role: "employee" } : undefined,
     orderBy: { createdAt: "desc" },
     include: { customRole: { select: { id: true, name: true } } },
   });
 
-  const adminCount = employees.filter((e) => e.role === "admin").length;
-  const managerCount = employees.filter((e) => e.role === "manager").length;
+  const adminCount    = employees.filter((e) => e.role === "admin").length;
+  const managerCount  = employees.filter((e) => e.role === "manager").length;
   const employeeCount = employees.filter((e) => e.role === "employee").length;
 
   return (
@@ -30,11 +35,14 @@ export default async function EmployeesPage() {
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-white">Team Management</h1>
         <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.4)" }}>
-          {employees.length} team members · {adminCount} admin · {managerCount} manager{managerCount !== 1 ? "s" : ""} · {employeeCount} employee{employeeCount !== 1 ? "s" : ""}
+          {employees.length} team members
+          {isAdmin && ` · ${adminCount} admin · ${managerCount} manager${managerCount !== 1 ? "s" : ""} · ${employeeCount} employee${employeeCount !== 1 ? "s" : ""}`}
+          {isManager && ` · ${employeeCount} employee${employeeCount !== 1 ? "s" : ""}`}
         </p>
       </div>
 
-      <AddEmployeeForm />
+      {/* Only admin can add new employees */}
+      {isAdmin && <AddEmployeeForm />}
 
       {employees.length === 0 ? (
         <div className="rounded-2xl p-12 text-center" style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -79,13 +87,20 @@ export default async function EmployeesPage() {
                     {employee.employeeId}
                   </td>
                   <td className="px-5 py-3.5">
-                    <RoleSelect
-                      id={employee.id}
-                      currentRole={employee.role}
-                      currentCustomRoleId={employee.customRoleId}
-                      currentCustomRoleName={employee.customRole?.name}
-                      isSelf={employee.employeeId === currentEmployeeId || employee.id === currentUserId}
-                    />
+                    {isAdmin ? (
+                      <RoleSelect
+                        id={employee.id}
+                        currentRole={employee.role}
+                        currentCustomRoleId={employee.customRoleId}
+                        currentCustomRoleName={employee.customRole?.name}
+                        isSelf={employee.employeeId === currentEmployeeId || employee.id === currentUserId}
+                      />
+                    ) : (
+                      <span className="text-xs px-2.5 py-1 rounded-full capitalize font-medium"
+                        style={{ background: "rgba(124,58,237,0.15)", color: "#c4b5fd" }}>
+                        {employee.role}
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3.5 text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
                     {employee.department || <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>}
@@ -107,7 +122,8 @@ export default async function EmployeesPage() {
                           salary: employee.salary,
                         }} />
                         <ResetPassword id={employee.id} />
-                        <DeleteEmployee id={employee.id} employeeId={employee.employeeId} />
+                        {/* Only admin can delete */}
+                        {isAdmin && <DeleteEmployee id={employee.id} employeeId={employee.employeeId} />}
                       </div>
                     )}
                   </td>
