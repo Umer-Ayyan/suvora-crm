@@ -50,12 +50,10 @@ const AUTO_MAP: Record<string, string> = {
   // Industry
   "industry":          "industry",
   "company industry":  "industry",
-  // Budget/Deal
+  // Budget/Deal (only explicit deal columns — NOT revenue/annual revenue as those are company financials)
   "budget":            "budget",
   "deal value":        "dealValue",
   "deal size":         "dealValue",
-  "revenue":           "dealValue",
-  "annual revenue":    "dealValue",
   // Priority
   "priority":          "priority",
   // Notes
