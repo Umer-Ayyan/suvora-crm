@@ -141,7 +141,7 @@ export default function RoleSelect({
                 {customRoles.map((r) => {
                   const isActive = activeCustomRoleId === r.id;
                   return (
-                    <button key={r.id} onClick={() => applyChange("employee", r.id)}
+                    <button key={r.id} onClick={() => applyChange(activeRole, r.id)}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold transition-all hover:bg-white/5"
                       style={{ color: r.color }}>
                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: r.color, opacity: isActive ? 1 : 0.3 }} />
