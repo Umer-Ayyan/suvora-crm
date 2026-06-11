@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 
 type Employee = { id: string; name: string; employeeId: string; role: string; designation: string | null };
@@ -75,18 +75,25 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const activeRoomIdRef = useRef<string | null>(null);
   // true = instant scroll (load), false = smooth (new message)
   const scrollInstantRef = useRef(true);
+  // Debounce timer for loadRooms
+  const loadRoomsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
 
-  // Load rooms
-  const loadRooms = useCallback(async () => {
-    try {
-      const res = await fetch("/api/chat/rooms");
-      if (!res.ok) return;
-      const data = await res.json();
-      setRooms(data);
-      setLoadingRooms(false);
-    } catch { /* silent */ }
+  // Load rooms (debounced — avoid rapid re-fetches causing flicker)
+  const loadRooms = useCallback(() => {
+    if (loadRoomsTimerRef.current) clearTimeout(loadRoomsTimerRef.current);
+    loadRoomsTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/chat/rooms");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setRooms(data);
+          setLoadingRooms(false);
+        }
+      } catch { /* silent */ }
+    }, 300);
   }, []);
 
   useEffect(() => { void loadRooms(); }, [loadRooms]);
@@ -230,16 +237,14 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [loadMessages, loadRooms]);
 
-  // Scroll to bottom whenever messages change
-  useEffect(() => {
+  // Scroll to bottom — useLayoutEffect fires synchronously after DOM update (before paint)
+  useLayoutEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
     if (scrollInstantRef.current) {
-      // Instant jump — no animation (page load / room switch)
       container.scrollTop = container.scrollHeight;
     } else {
-      // Smooth scroll for new incoming/sent message
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
     }
   }, [messages]);
 
@@ -283,7 +288,6 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
         const msg = await res.json();
         scrollInstantRef.current = false;
         setMessages((prev) => [...prev, msg]);
-        loadRooms();
       } else {
         toast.error("Failed to send");
         setInput(content);
