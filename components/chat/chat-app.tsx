@@ -7,7 +7,7 @@ type Employee = { id: string; name: string; employeeId: string; role: string; de
 type Member = { id: string; user: { id: string; name: string; employeeId: string; role: string } };
 type LastMsg = { id: string; content: string; sender: { id: string; name: string }; createdAt: string };
 type Room = { id: string; name: string | null; type: string; members: Member[]; messages: LastMsg[] };
-type Message = { id: string; content: string; senderId: string; sender: { id: string; name: string }; createdAt: string };
+type Message = { id: string; content: string; senderId: string; sender: { id: string; name: string }; createdAt: string; readBy: { userId: string }[] };
 
 function getRoomName(room: Room, currentUserId: string) {
   if (room.type === "group") return room.name || "Group Chat";
@@ -17,6 +17,26 @@ function getRoomName(room: Room, currentUserId: string) {
 
 function getRoomInitial(room: Room, currentUserId: string) {
   return getRoomName(room, currentUserId)[0]?.toUpperCase() || "?";
+}
+
+// Message tick indicator (WhatsApp-style)
+function MessageTicks({ isRead }: { isRead: boolean }) {
+  if (isRead) {
+    // Double blue tick
+    return (
+      <svg className="inline w-4 h-4 ml-1 flex-shrink-0" viewBox="0 0 16 11" fill="none">
+        <path d="M1 5.5L4.5 9L9 1" stroke="#60a5fa" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M5 5.5L8.5 9L13 1" stroke="#60a5fa" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+  // Double grey tick (sent)
+  return (
+    <svg className="inline w-4 h-4 ml-1 flex-shrink-0" viewBox="0 0 16 11" fill="none">
+      <path d="M1 5.5L4.5 9L9 1" stroke="rgba(255,255,255,0.4)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M5 5.5L8.5 9L13 1" stroke="rgba(255,255,255,0.4)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
 }
 
 function timeAgo(dateStr: string) {
@@ -84,19 +104,23 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
       es.onmessage = (e) => {
         try {
-          const data = JSON.parse(e.data) as { __roomId: string } & Message;
-          const { __roomId: roomId, ...msg } = data;
+          const data = JSON.parse(e.data) as { __type: string; __roomId: string } & Message;
+          const { __type, __roomId: roomId, ...msg } = data;
+
+          // Only handle new messages in global stream (read events handled by room SSE)
+          if (__type !== "message") return;
 
           // Always refresh sidebar so last-message preview updates
           void loadRooms();
 
           if (activeRoomIdRef.current === roomId) {
-            // Active room → append message and scroll to bottom smoothly
+            // Active room → append message, scroll, and immediately mark as read
             scrollInstantRef.current = false;
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev;
               return [...prev, msg as Message];
             });
+            void fetch(`/api/chat/rooms/${roomId}/read`, { method: "POST" });
           } else {
             // Different room → increment unread badge
             setUnreadCounts((prev) => ({ ...prev, [roomId]: (prev[roomId] ?? 0) + 1 }));
@@ -148,12 +172,26 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
       es.onmessage = (e) => {
         try {
-          const msg: Message = JSON.parse(e.data);
+          const data = JSON.parse(e.data);
           if (activeRoomIdRef.current !== roomId) return;
+
+          if (data.__type === "read") {
+            // Someone read the messages — mark all my messages as read in state
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.senderId === currentUserId && !m.readBy.some((r) => r.userId === data.readerId)
+                  ? { ...m, readBy: [...m.readBy, { userId: data.readerId }] }
+                  : m
+              )
+            );
+            return;
+          }
+
+          // Regular message
           scrollInstantRef.current = false;
           setMessages((prev) => {
-            if (prev.some((m) => m.id === msg.id)) return prev;
-            return [...prev, msg];
+            if (prev.some((m) => m.id === data.id)) return prev;
+            return [...prev, data as Message];
           });
           void loadRooms();
         } catch { /* ignore malformed */ }
@@ -222,10 +260,11 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     if (isAdmin && spyMode) {
       await fetch(`/api/chat/rooms/${room.id}/spy`, { method: "POST" });
     }
-    // Clear unread badge for this room
     setUnreadCounts((prev) => ({ ...prev, [room.id]: 0 }));
     setMessages([]);
-    setActiveRoomId(room.id); // triggers useEffect → loadMessages + SSE
+    setActiveRoomId(room.id);
+    // Mark messages as read (fires in background, triggers blue tick for sender)
+    void fetch(`/api/chat/rooms/${room.id}/read`, { method: "POST" });
   }
 
   async function sendMessage(e: React.FormEvent) {
@@ -471,9 +510,16 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                         }}>
                         {msg.content}
                       </div>
-                      <p className="text-xs mt-1 px-1" style={{ color: "rgba(255,255,255,0.25)" }}>
-                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </p>
+                      <div className="flex items-center gap-0.5 mt-1 px-1">
+                        <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
+                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                        {isMe && (
+                          <MessageTicks
+                            isRead={msg.readBy?.some((r) => r.userId !== currentUserId) ?? false}
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

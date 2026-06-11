@@ -249,9 +249,23 @@ model ChatMessage {
   senderId  String
   sender    User     @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+  readBy    ChatMessageRead[]
 
   @@index([roomId, createdAt])
   @@index([senderId])
+}
+
+model ChatMessageRead {
+  id        String      @id @default(cuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt    DateTime    @default(now())
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
 }
 
 // ─── CUSTOM ROLE ───────────────────────────────────────────────────────────
@@ -312,6 +326,7 @@ model User {
   documents         EmployeeDocument[]
   chatRooms         ChatRoomMember[]
   chatMessages      ChatMessage[] @relation("ChatSender")
+  messageReads      ChatMessageRead[]
   leaveRequests     LeaveRequest[]
   leaveReviews      LeaveRequest[] @relation("LeaveReviewer")
 }

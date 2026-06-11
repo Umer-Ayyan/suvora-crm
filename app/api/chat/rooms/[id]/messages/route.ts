@@ -22,7 +22,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { roomId: id },
     orderBy: { createdAt: "asc" },
     take: 100,
-    include: { sender: { select: { id: true, name: true } } },
+    include: {
+      sender: { select: { id: true, name: true } },
+      readBy: { select: { userId: true } },
+    },
   });
 
   return NextResponse.json(messages);
@@ -52,7 +55,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const message = await prisma.chatMessage.create({
     data: { content: content.trim(), roomId: id, senderId: userId },
-    include: { sender: { select: { id: true, name: true } } },
+    include: {
+      sender: { select: { id: true, name: true } },
+      readBy: { select: { userId: true } },
+    },
   });
 
   // Get all (non-hidden) members to push global notifications

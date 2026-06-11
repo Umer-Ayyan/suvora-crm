@@ -29,14 +29,21 @@ export function subscribeUser(userId: string, cb: Listener): () => void {
 // ── Broadcast ────────────────────────────────────────────────────────────────
 // memberIds: everyone in the room (to push global notifications)
 export function broadcast(roomId: string, data: object, memberIds: string[] = []) {
-  const payload = JSON.stringify(data);
+  const payload = JSON.stringify({ __type: "message", ...data });
 
   // Push to anyone currently viewing this room
   roomListeners.get(roomId)?.forEach((cb) => cb(payload));
 
   // Push to every member's global stream (so sidebar updates even when room is not open)
-  const globalPayload = JSON.stringify({ __roomId: roomId, ...data });
+  const globalPayload = JSON.stringify({ __type: "message", __roomId: roomId, ...data });
   memberIds.forEach((uid) => {
     userListeners.get(uid)?.forEach((cb) => cb(globalPayload));
   });
+}
+
+// ── Broadcast read receipt ────────────────────────────────────────────────────
+// readerId opened the room → notify everyone in the room so senders see blue ticks
+export function broadcastRead(roomId: string, readerId: string) {
+  const payload = JSON.stringify({ __type: "read", readerId });
+  roomListeners.get(roomId)?.forEach((cb) => cb(payload));
 }
