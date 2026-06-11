@@ -1,4 +1,5 @@
 import AddLeadForm from "@/components/leads/add-lead-form";
+import ImportCSVModal from "@/components/leads/import-csv-modal";
 import StatusSelect from "@/components/leads/status-select";
 import DeleteLead from "@/components/leads/delete-lead";
 import Link from "next/link";
@@ -146,6 +147,7 @@ export default async function LeadsPage({
         </p>
       </div>
 
+        <ImportCSVModal />
         <AddLeadForm />
 
         <SearchFilter />
