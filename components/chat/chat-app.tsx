@@ -257,7 +257,11 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
         setShowScrollBtn(true);
       }
       void fetch(`/api/chat/rooms/${activeRoomId}/read`, { method: "POST" });
-      void loadRooms();
+      // Update sidebar last message locally (no API call needed)
+      setRooms((prev) => prev.map((r) => {
+        if (r.id !== activeRoomId) return r;
+        return { ...r, messages: [{ id: payload.id, content: payload.content, sender: payload.sender, createdAt: payload.createdAt }] };
+      }));
     })
 
     .on("broadcast", { event: "edit_message" }, ({ payload }: { payload: { messageId: string; content: string } }) => {
@@ -310,41 +314,52 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     };
   }, [activeRoomId, loadMessages, loadRooms, currentUserId]);
 
-  // ── Background room poll (sidebar + notifications) ────────────────────────
+  // ── Background Realtime channels — sidebar + notifications (no polling) ────
+  // Subscribe to every room the user is in. When a new_message arrives in a
+  // background room (not currently open), update sidebar + send notification.
+  const bgChannelsRef = useRef<ReturnType<typeof supabase.channel>[]>([]);
+
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/chat/rooms");
-        if (!res.ok) return;
-        const fresh: Room[] = await res.json();
-        if (!Array.isArray(fresh)) return;
+    if (rooms.length === 0) return;
 
-        fresh.forEach((room) => {
-          if (room.id === activeRoomIdRef.current) return;
-          const prev    = prevRoomsRef.current.find((r) => r.id === room.id);
-          const newMsg  = room.messages?.[0];
-          const prevMsg = prev?.messages?.[0];
-          if (!newMsg || prevMsg?.id === newMsg.id || newMsg.sender?.id === currentUserId) return;
+    // Tear down old background channels
+    bgChannelsRef.current.forEach((ch) => void supabase.removeChannel(ch));
+    bgChannelsRef.current = [];
 
-          setUnreadCounts((c) => ({ ...c, [room.id]: (c[room.id] ?? 0) + 1 }));
-          if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-            new Notification(`${newMsg.sender?.name ?? "Someone"} · ${getRoomName(room, currentUserId)}`, {
-              body: newMsg.content?.slice(0, 80) || "New message",
-              icon: "/favicon.ico",
-              tag: room.id,
-            });
-          }
-        });
+    rooms.forEach((room) => {
+      // Active room is handled by the main channel — skip
+      if (room.id === activeRoomIdRef.current) return;
 
-        prevRoomsRef.current = fresh;
-        setRooms(fresh);
-      } catch { /* silent */ }
-      finally { setLoadingRooms(false); }
+      const ch = supabase.channel(`bg:${room.id}`, { config: { broadcast: { self: false } } });
+      ch.on("broadcast", { event: "new_message" }, ({ payload }: { payload: Message }) => {
+        if (payload.senderId === currentUserId) return;
+        if (room.id === activeRoomIdRef.current) return; // became active
+
+        // Update sidebar last message
+        setRooms((prev) => prev.map((r) => {
+          if (r.id !== room.id) return r;
+          return { ...r, messages: [{ id: payload.id, content: payload.content, sender: payload.sender, createdAt: payload.createdAt }] };
+        }));
+
+        setUnreadCounts((c) => ({ ...c, [room.id]: (c[room.id] ?? 0) + 1 }));
+
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          new Notification(`${payload.sender?.name ?? "Someone"} · ${getRoomName(room, currentUserId)}`, {
+            body: payload.content?.slice(0, 80) || "New message",
+            icon: "/favicon.ico",
+            tag: room.id,
+          });
+        }
+      }).subscribe();
+
+      bgChannelsRef.current.push(ch);
+    });
+
+    return () => {
+      bgChannelsRef.current.forEach((ch) => void supabase.removeChannel(ch));
+      bgChannelsRef.current = [];
     };
-
-    const t = setInterval(poll, 5000);
-    return () => clearInterval(t);
-  }, [currentUserId]);
+  }, [rooms, currentUserId]);
 
   // ── Visibility change ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -491,7 +506,11 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
         void realtimeChannelRef.current?.send({
           type: "broadcast", event: "new_message", payload: confirmed,
         });
-        void loadRooms();
+        // Update sidebar locally for sender
+        setRooms((prev) => prev.map((r) => {
+          if (r.id !== roomId) return r;
+          return { ...r, messages: [{ id: confirmed.id, content: confirmed.content, sender: confirmed.sender, createdAt: confirmed.createdAt }] };
+        }));
       } else {
         setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
       }
