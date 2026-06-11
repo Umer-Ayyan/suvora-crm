@@ -100,18 +100,24 @@ export const authOptions: NextAuthOptions = {
         token.permissions    = (user as any).permissions;
         token.sessionVersion = 0; // will be validated on next request
       } else if (token.id) {
-        // Validate sessionVersion to detect forced sign-outs (password change / delete)
-        try {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: { sessionVersion: true },
-          });
-          if (!dbUser) return {}; // user deleted — sign out
-          const dbVersion    = dbUser.sessionVersion ?? 0;
-          const tokenVersion = (token.sessionVersion as number | undefined) ?? 0;
-          if (dbVersion > tokenVersion) return {}; // password changed — sign out
-        } catch {
-          // DB error — don't sign out, just continue
+        // Validate sessionVersion at most once every 5 minutes to avoid a DB
+        // query on every single request (which caused 30-second load times).
+        const now         = Math.floor(Date.now() / 1000);
+        const lastChecked = (token.lastVersionCheck as number | undefined) ?? 0;
+        if (now - lastChecked > 300) {
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: { sessionVersion: true },
+            });
+            if (!dbUser) return {}; // user deleted — sign out
+            const dbVersion    = dbUser.sessionVersion ?? 0;
+            const tokenVersion = (token.sessionVersion as number | undefined) ?? 0;
+            if (dbVersion > tokenVersion) return {}; // password changed — sign out
+            token.lastVersionCheck = now; // record successful check time
+          } catch {
+            // DB error — don't sign out, just continue
+          }
         }
       }
       return token;
