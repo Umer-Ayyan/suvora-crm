@@ -101,7 +101,8 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
-      (session.user as any).id           = token.id as string;
+      // token.sub is automatically set by NextAuth to user.id — use as fallback
+      (session.user as any).id           = (token.id ?? token.sub) as string;
       (session.user as any).role         = token.role as string;
       (session.user as any).employeeId   = token.employeeId as string;
       (session.user as any).customRoleId = token.customRoleId;
