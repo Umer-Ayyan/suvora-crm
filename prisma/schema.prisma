@@ -193,6 +193,45 @@ model Payslip {
   @@index([year, month])
 }
 
+// ─── CHAT ──────────────────────────────────────────────────────────────────
+model ChatRoom {
+  id          String   @id @default(cuid())
+  name        String?                        // null for direct messages
+  type        String   @default("direct")   // direct | group
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  members     ChatRoomMember[]
+  messages    ChatMessage[]
+}
+
+model ChatRoomMember {
+  id       String   @id @default(cuid())
+  roomId   String
+  room     ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isHidden Boolean  @default(false)  // true = admin spy, not shown to others
+  joinedAt DateTime @default(now())
+
+  @@unique([roomId, userId])
+  @@index([userId])
+  @@index([roomId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  content   String
+  roomId    String
+  room      ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@index([senderId])
+}
+
 // ─── CUSTOM ROLE ───────────────────────────────────────────────────────────
 model CustomRole {
   id          String   @id @default(cuid())
@@ -249,6 +288,8 @@ model User {
   goals             Goal[]
   goalsCreated      Goal[]        @relation("GoalCreator")
   documents         EmployeeDocument[]
+  chatRooms         ChatRoomMember[]
+  chatMessages      ChatMessage[] @relation("ChatSender")
 }
 
 // ─── EMPLOYEE DOCUMENT ─────────────────────────────────────────────────────
