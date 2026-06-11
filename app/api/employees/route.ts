@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
         salary: Number(body.salary) || 0,
         department: body.department?.trim() || null,
         phone: body.phone?.trim() || null,
+        customRoleId: body.customRoleId || null,
       },
     });
 

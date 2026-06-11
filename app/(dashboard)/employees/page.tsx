@@ -12,6 +12,7 @@ import Link from "next/link";
 export default async function EmployeesPage() {
   const session = await getServerSession(authOptions);
   const role = (session?.user as any)?.role;
+  const currentUserId = (session?.user as any)?.id;
   if (role !== "admin") redirect("/");
 
   const employees = await prisma.user.findMany({ orderBy: { createdAt: "desc" } });
@@ -74,7 +75,7 @@ export default async function EmployeesPage() {
                     {employee.employeeId}
                   </td>
                   <td className="px-5 py-3.5">
-                    <RoleSelect id={employee.id} currentRole={employee.role} />
+                    <RoleSelect id={employee.id} currentRole={employee.role} isSelf={employee.id === currentUserId} />
                   </td>
                   <td className="px-5 py-3.5 text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
                     {employee.department || <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>}

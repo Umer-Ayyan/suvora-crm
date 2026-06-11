@@ -10,7 +10,7 @@ const ROLES = [
   { value: "admin",    label: "Admin",    bg: "rgba(124,58,237,0.15)",       color: "#c4b5fd" },
 ];
 
-export default function RoleSelect({ id, currentRole }: { id: string; currentRole: string }) {
+export default function RoleSelect({ id, currentRole, isSelf }: { id: string; currentRole: string; isSelf?: boolean }) {
   const router = useRouter();
   const [role, setRole] = useState(currentRole);
   const [loading, setLoading] = useState(false);
@@ -41,6 +41,20 @@ export default function RoleSelect({ id, currentRole }: { id: string; currentRol
       setLoading(false);
       setOpen(false);
     }
+  }
+
+  // Locked: can't change your own role
+  if (isSelf) {
+    const cur = ROLES.find((r) => r.value === role) || ROLES[0];
+    return (
+      <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full capitalize"
+        style={{ background: cur.bg, color: cur.color }}>
+        {cur.label}
+        <svg className="w-3 h-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </span>
+    );
   }
 
   return (
