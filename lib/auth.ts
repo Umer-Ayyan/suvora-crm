@@ -48,10 +48,29 @@ export const authOptions: NextAuthOptions = {
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) return null;
 
-        // Determine permissions
-        const permissions: Permissions = user.customRole
-          ? (user.customRole.permissions as Permissions)
-          : defaultPermissions(user.role);
+        // Determine permissions:
+        // - admin: always all access
+        // - manager + custom role: MERGE (union) — manager keeps all powers, custom role can only ADD not remove
+        // - employee + custom role: custom role defines exactly what they can see
+        // - no custom role: default for system role
+        let permissions: Permissions;
+        if (user.role === "admin") {
+          permissions = defaultPermissions("admin");
+        } else if (user.customRole) {
+          const custom = user.customRole.permissions as Permissions;
+          const base   = defaultPermissions(user.role);
+          if (user.role === "manager") {
+            // Manager keeps everything they already have; custom role can only add more
+            permissions = Object.fromEntries(
+              Object.keys(base).map((k) => [k, base[k as keyof Permissions] || custom[k as keyof Permissions]])
+            ) as Permissions;
+          } else {
+            // Employee: custom role fully controls what they see
+            permissions = custom;
+          }
+        } else {
+          permissions = defaultPermissions(user.role);
+        }
 
         return {
           id: user.id,
@@ -71,6 +90,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        token.id           = (user as any).id;
         token.role         = (user as any).role;
         token.employeeId   = (user as any).employeeId;
         token.customRoleId = (user as any).customRoleId;
@@ -81,6 +101,7 @@ export const authOptions: NextAuthOptions = {
     },
 
     async session({ session, token }) {
+      (session.user as any).id           = token.id as string;
       (session.user as any).role         = token.role as string;
       (session.user as any).employeeId   = token.employeeId as string;
       (session.user as any).customRoleId = token.customRoleId;
