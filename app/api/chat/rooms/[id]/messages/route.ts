@@ -19,7 +19,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const messages = await prisma.chatMessage.findMany({
-    where: { roomId: id },
+    where: {
+      roomId: id,
+      hiddenBy: { none: { userId } }, // exclude messages hidden by current user
+    },
     orderBy: { createdAt: "asc" },
     take: 100,
     include: {

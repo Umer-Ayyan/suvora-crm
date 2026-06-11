@@ -413,12 +413,21 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     });
   }
 
-  async function deleteMessage(msgId: string) {
+  async function deleteMessage(msgId: string, deleteType: "everyone" | "me") {
     if (!activeRoomId) return;
     setMenuMsgId(null);
-    // Optimistic update
-    setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m));
-    await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, { method: "DELETE" });
+    if (deleteType === "me") {
+      // Optimistic: remove from local state only
+      setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    } else {
+      // Optimistic: show deleted placeholder for everyone
+      setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m));
+    }
+    await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deleteType }),
+    });
   }
 
   // Retry a failed message
@@ -719,6 +728,9 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                 const isDeleted = !!msg.isDeleted;
                 const isEditing = editingId === msg.id;
                 const showMenu = menuMsgId === msg.id;
+                const msgAgeMs = Date.now() - new Date(msg.createdAt).getTime();
+                const canEdit = isMe && !isDeleted && !isSending && msgAgeMs < 15 * 60 * 1000;
+                const canDeleteForAll = (isMe || isAdmin) && !isDeleted && !isSending && (isAdmin || msgAgeMs < 24 * 60 * 60 * 1000);
 
                 return (
                   <div key={msg.tempId ?? msg.id} onClick={() => setMenuMsgId(null)}>
@@ -769,27 +781,46 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                           {showMenu && (
                             <div
                               className={`absolute top-0 z-20 rounded-2xl overflow-hidden flex flex-col ${isMe ? "right-full mr-2" : "left-full ml-2"}`}
-                              style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", minWidth: 140 }}
+                              style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", minWidth: 170 }}
                               onClick={(e) => e.stopPropagation()}>
-                              {isMe && !isDeleted && (
+
+                              {/* Edit — only own msg within 15 min */}
+                              {canEdit && (
                                 <button
                                   onClick={() => { setEditingId(msg.id); setEditContent(msg.content); setMenuMsgId(null); }}
                                   className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium text-white hover:bg-white/10 transition-all text-left">
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                   </svg>
-                                  Edit Message
+                                  Edit
+                                  <span className="ml-auto text-[10px] opacity-40">15 min</span>
                                 </button>
                               )}
-                              {(isMe || isAdmin) && !isDeleted && (
+
+                              {/* Delete for me — always */}
+                              {!isDeleted && !isSending && (
                                 <button
-                                  onClick={() => void deleteMessage(msg.id)}
+                                  onClick={() => void deleteMessage(msg.id, "me")}
                                   className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium hover:bg-white/10 transition-all text-left"
-                                  style={{ color: "#f87171" }}>
+                                  style={{ color: "#fbbf24" }}>
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                                  </svg>
+                                  Delete for Me
+                                </button>
+                              )}
+
+                              {/* Delete for everyone — sender/admin + time limit */}
+                              {canDeleteForAll && (
+                                <button
+                                  onClick={() => void deleteMessage(msg.id, "everyone")}
+                                  className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium hover:bg-white/10 transition-all text-left border-t"
+                                  style={{ color: "#f87171", borderColor: "rgba(255,255,255,0.07)" }}>
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                   </svg>
-                                  Delete
+                                  Delete for Everyone
+                                  {!isAdmin && <span className="ml-auto text-[10px] opacity-40">24h</span>}
                                 </button>
                               )}
                             </div>

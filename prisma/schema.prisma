@@ -252,9 +252,22 @@ model ChatMessage {
   editedAt  DateTime?
   isDeleted Boolean  @default(false)
   readBy    ChatMessageRead[]
+  hiddenBy  ChatMessageHide[]
 
   @@index([roomId, createdAt])
   @@index([senderId])
+}
+
+model ChatMessageHide {
+  id        String      @id @default(cuid())
+  messageId String
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hiddenAt  DateTime    @default(now())
+
+  @@unique([messageId, userId])
+  @@index([userId])
 }
 
 model ChatMessageRead {
@@ -330,6 +343,7 @@ model User {
   chatRooms         ChatRoomMember[]
   chatMessages      ChatMessage[] @relation("ChatSender")
   messageReads      ChatMessageRead[]
+  messageHides      ChatMessageHide[]
   leaveRequests     LeaveRequest[]
   leaveReviews      LeaveRequest[] @relation("LeaveReviewer")
 }
