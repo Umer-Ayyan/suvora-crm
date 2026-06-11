@@ -193,6 +193,28 @@ model Payslip {
   @@index([year, month])
 }
 
+// ─── LEAVE REQUEST ─────────────────────────────────────────────────────────
+model LeaveRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // annual | sick | casual | unpaid | other
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  days        Int
+  reason      String?
+  status      String   @default("pending") // pending | approved | rejected
+  reviewedById String?
+  reviewedBy   User?   @relation("LeaveReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([startDate])
+}
+
 // ─── CHAT ──────────────────────────────────────────────────────────────────
 model ChatRoom {
   id          String   @id @default(cuid())
@@ -290,6 +312,8 @@ model User {
   documents         EmployeeDocument[]
   chatRooms         ChatRoomMember[]
   chatMessages      ChatMessage[] @relation("ChatSender")
+  leaveRequests     LeaveRequest[]
+  leaveReviews      LeaveRequest[] @relation("LeaveReviewer")
 }
 
 // ─── EMPLOYEE DOCUMENT ─────────────────────────────────────────────────────
