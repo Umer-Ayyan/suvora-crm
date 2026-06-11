@@ -189,12 +189,12 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
       loadRoomsTimerRef.current = setTimeout(async () => {
         try {
           const res = await fetch("/api/chat/rooms");
-          if (!res.ok) return resolve();
-          const data = await res.json();
-          if (!Array.isArray(data)) return resolve();
-          setRooms(data);
-          setLoadingRooms(false);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) setRooms(data);
+          }
         } catch { /* silent */ }
+        finally { setLoadingRooms(false); }
         resolve();
       }, 200);
     });
@@ -338,8 +338,8 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
         prevRoomsRef.current = fresh;
         setRooms(fresh);
-        setLoadingRooms(false);
       } catch { /* silent */ }
+      finally { setLoadingRooms(false); }
     };
 
     const t = setInterval(poll, 5000);
