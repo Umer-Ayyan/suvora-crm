@@ -11,6 +11,8 @@ type Message = {
   id: string; content: string; senderId: string;
   sender: { id: string; name: string }; createdAt: string;
   readBy: { userId: string }[];
+  editedAt?: string | null;
+  isDeleted?: boolean;
   // optimistic-only fields (not in DB)
   status?: "sending" | "failed";
   tempId?: string;
@@ -152,6 +154,9 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending] = useState(false); // kept for button UI only
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [menuMsgId, setMenuMsgId] = useState<string | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatType, setNewChatType] = useState<"direct" | "group">("direct");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -251,11 +256,23 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
         try {
           const data = JSON.parse(e.data);
           if (activeRoomIdRef.current !== roomId) return;
+
           if (data.__type === "read") {
             setMessages((prev) => prev.map((m) =>
               m.senderId === currentUserId && !m.readBy.some((r) => r.userId === data.readerId)
-                ? { ...m, readBy: [...m.readBy, { userId: data.readerId }] }
-                : m
+                ? { ...m, readBy: [...m.readBy, { userId: data.readerId }] } : m
+            ));
+            return;
+          }
+          if (data.__type === "edit") {
+            setMessages((prev) => prev.map((m) =>
+              m.id === data.messageId ? { ...m, content: data.content, editedAt: new Date().toISOString() } : m
+            ));
+            return;
+          }
+          if (data.__type === "delete") {
+            setMessages((prev) => prev.map((m) =>
+              m.id === data.messageId ? { ...m, isDeleted: true, content: "" } : m
             ));
             return;
           }
@@ -380,6 +397,28 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
       // Network error — mark as failed
       setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
     }
+  }
+
+  async function saveEdit(msgId: string) {
+    if (!editContent.trim() || !activeRoomId) return;
+    // Optimistic update
+    setMessages((prev) => prev.map((m) =>
+      m.id === msgId ? { ...m, content: editContent.trim(), editedAt: new Date().toISOString() } : m
+    ));
+    setEditingId(null);
+    await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: editContent.trim() }),
+    });
+  }
+
+  async function deleteMessage(msgId: string) {
+    if (!activeRoomId) return;
+    setMenuMsgId(null);
+    // Optimistic update
+    setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m));
+    await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, { method: "DELETE" });
   }
 
   // Retry a failed message
@@ -677,9 +716,12 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                 const isRead = msg.readBy?.some((r) => r.userId !== currentUserId) ?? false;
                 const isFailed = msg.status === "failed";
                 const isSending = msg.status === "sending";
+                const isDeleted = !!msg.isDeleted;
+                const isEditing = editingId === msg.id;
+                const showMenu = menuMsgId === msg.id;
 
                 return (
-                  <div key={msg.tempId ?? msg.id}>
+                  <div key={msg.tempId ?? msg.id} onClick={() => setMenuMsgId(null)}>
                     {/* Date separator */}
                     {showDateSep && (
                       <div className="flex items-center gap-3 my-4">
@@ -706,35 +748,123 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                           </p>
                         )}
 
-                        {/* Bubble */}
-                        <div className="relative px-3.5 py-2.5 rounded-2xl"
-                          style={{
-                            background: isFailed
-                              ? "rgba(239,68,68,0.15)"
-                              : isMe ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.07)",
-                            borderBottomRightRadius: isMe ? 4 : undefined,
-                            borderBottomLeftRadius: !isMe ? 4 : undefined,
-                            boxShadow: isMe && !isFailed ? "0 2px 12px rgba(124,58,237,0.3)" : "none",
-                            opacity: isSending ? 0.75 : 1,
-                            border: isFailed ? "1px solid rgba(239,68,68,0.3)" : "none",
-                          }}>
-                          <p className="text-sm text-white leading-relaxed" style={{ wordBreak: "break-word" }}>
-                            {msg.content}
-                          </p>
+                        {/* Bubble wrapper with hover menu trigger */}
+                        <div className="relative group/msg">
 
-                          {/* Time + status */}
-                          <div className={`flex items-center gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
-                            <span className="text-[10px]" style={{ color: isMe ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.3)" }}>
-                              {formatTime(msg.createdAt)}
-                            </span>
-                            {isMe && <MessageStatus status={msg.status} isRead={isRead} />}
-                          </div>
+                          {/* ── 3-dot menu button (hover) ── */}
+                          {!isDeleted && !isSending && !isEditing && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setMenuMsgId(showMenu ? null : msg.id); }}
+                              className={`absolute top-1 z-10 w-6 h-6 rounded-full items-center justify-center transition-all
+                                opacity-0 group-hover/msg:opacity-100
+                                ${isMe ? "-left-8" : "-right-8"}`}
+                              style={{ background: "rgba(255,255,255,0.1)", display: "flex" }}>
+                              <svg viewBox="0 0 24 24" fill="white" style={{ width: 12, height: 12 }}>
+                                <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+                              </svg>
+                            </button>
+                          )}
+
+                          {/* ── Context menu ── */}
+                          {showMenu && (
+                            <div
+                              className={`absolute top-0 z-20 rounded-2xl overflow-hidden flex flex-col ${isMe ? "right-full mr-2" : "left-full ml-2"}`}
+                              style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", minWidth: 140 }}
+                              onClick={(e) => e.stopPropagation()}>
+                              {isMe && !isDeleted && (
+                                <button
+                                  onClick={() => { setEditingId(msg.id); setEditContent(msg.content); setMenuMsgId(null); }}
+                                  className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium text-white hover:bg-white/10 transition-all text-left">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                  </svg>
+                                  Edit Message
+                                </button>
+                              )}
+                              {(isMe || isAdmin) && !isDeleted && (
+                                <button
+                                  onClick={() => void deleteMessage(msg.id)}
+                                  className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium hover:bg-white/10 transition-all text-left"
+                                  style={{ color: "#f87171" }}>
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                  </svg>
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {/* ── Bubble ── */}
+                          {isDeleted ? (
+                            /* Deleted message */
+                            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl"
+                              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.8} style={{ width: 14, height: 14 }}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                              </svg>
+                              <span className="text-xs italic" style={{ color: "rgba(255,255,255,0.3)" }}>
+                                {isMe ? "You deleted this message" : "This message was deleted"}
+                              </span>
+                            </div>
+                          ) : isEditing ? (
+                            /* Edit mode */
+                            <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(124,58,237,0.2)", border: "1px solid rgba(124,58,237,0.4)", minWidth: 200 }}>
+                              <textarea
+                                autoFocus
+                                value={editContent}
+                                onChange={(e) => setEditContent(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void saveEdit(msg.id); }
+                                  if (e.key === "Escape") setEditingId(null);
+                                }}
+                                className="w-full bg-transparent text-sm text-white outline-none resize-none px-3.5 pt-2.5 pb-1"
+                                style={{ minWidth: 200, maxWidth: 320 }}
+                                rows={2}
+                              />
+                              <div className="flex items-center justify-end gap-2 px-3 pb-2">
+                                <button onClick={() => setEditingId(null)}
+                                  className="text-[10px] px-2.5 py-1 rounded-full" style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}>
+                                  Cancel
+                                </button>
+                                <button onClick={() => void saveEdit(msg.id)}
+                                  className="text-[10px] px-2.5 py-1 rounded-full font-semibold text-white" style={{ background: "#7c3aed" }}>
+                                  Save
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Normal bubble */
+                            <div className="px-3.5 py-2.5 rounded-2xl"
+                              style={{
+                                background: isFailed ? "rgba(239,68,68,0.15)" : isMe ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.07)",
+                                borderBottomRightRadius: isMe ? 4 : undefined,
+                                borderBottomLeftRadius: !isMe ? 4 : undefined,
+                                boxShadow: isMe && !isFailed ? "0 2px 12px rgba(124,58,237,0.3)" : "none",
+                                opacity: isSending ? 0.75 : 1,
+                                border: isFailed ? "1px solid rgba(239,68,68,0.3)" : "none",
+                              }}>
+                              <p className="text-sm text-white leading-relaxed" style={{ wordBreak: "break-word" }}>
+                                {msg.content}
+                              </p>
+                              {/* Time + status */}
+                              <div className={`flex items-center gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                                {msg.editedAt && (
+                                  <span className="text-[10px] italic" style={{ color: "rgba(255,255,255,0.35)" }}>edited</span>
+                                )}
+                                <span className="text-[10px]" style={{ color: isMe ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.3)" }}>
+                                  {formatTime(msg.createdAt)}
+                                </span>
+                                {isMe && <MessageStatus status={msg.status} isRead={isRead} />}
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* Failed: tap to retry */}
                         {isFailed && (
                           <button onClick={() => void retryMessage(msg)}
-                            className="text-[10px] mt-1 px-2 py-0.5 rounded-full transition-all hover:opacity-80"
+                            className="text-[10px] mt-1 px-2 py-0.5 rounded-full"
                             style={{ color: "#f87171", background: "rgba(239,68,68,0.1)" }}>
                             ↺ Tap to retry
                           </button>

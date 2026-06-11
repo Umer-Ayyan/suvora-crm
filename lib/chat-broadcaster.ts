@@ -41,6 +41,21 @@ export function broadcast(roomId: string, data: object, memberIds: string[] = []
   });
 }
 
+// ── Broadcast edit/delete ─────────────────────────────────────────────────────
+export function broadcastEdit(roomId: string, messageId: string, content: string, memberIds: string[] = []) {
+  const payload = JSON.stringify({ __type: "edit", messageId, content });
+  roomListeners.get(roomId)?.forEach((cb) => cb(payload));
+  const global = JSON.stringify({ __type: "edit", __roomId: roomId, messageId, content });
+  memberIds.forEach((uid) => userListeners.get(uid)?.forEach((cb) => cb(global)));
+}
+
+export function broadcastDelete(roomId: string, messageId: string, memberIds: string[] = []) {
+  const payload = JSON.stringify({ __type: "delete", messageId });
+  roomListeners.get(roomId)?.forEach((cb) => cb(payload));
+  const global = JSON.stringify({ __type: "delete", __roomId: roomId, messageId });
+  memberIds.forEach((uid) => userListeners.get(uid)?.forEach((cb) => cb(global)));
+}
+
 // ── Broadcast read receipt ────────────────────────────────────────────────────
 // readerId opened the room → notify everyone in the room so senders see blue ticks
 export function broadcastRead(roomId: string, readerId: string) {
