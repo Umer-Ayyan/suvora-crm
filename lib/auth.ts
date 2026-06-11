@@ -98,22 +98,27 @@ export const authOptions: NextAuthOptions = {
         token.customRoleId   = (user as any).customRoleId;
         token.customRoleName = (user as any).customRoleName;
         token.permissions    = (user as any).permissions;
-        // Store sessionVersion at login time
-        const dbUser = await prisma.user.findUnique({ where: { id: (user as any).id }, select: { sessionVersion: true } });
-        token.sessionVersion = dbUser?.sessionVersion ?? 0;
+        token.sessionVersion = 0; // will be validated on next request
       } else if (token.id) {
-        // On every subsequent request, verify sessionVersion hasn't changed
-        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string }, select: { sessionVersion: true } });
-        if (!dbUser || (dbUser.sessionVersion ?? 0) !== (token.sessionVersion ?? 0)) {
-          // Session invalidated — return empty token to force sign-out
-          return {};
+        // Validate sessionVersion to detect forced sign-outs (password change / delete)
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { sessionVersion: true },
+          });
+          if (!dbUser) return {}; // user deleted — sign out
+          const dbVersion    = dbUser.sessionVersion ?? 0;
+          const tokenVersion = (token.sessionVersion as number | undefined) ?? 0;
+          if (dbVersion > tokenVersion) return {}; // password changed — sign out
+        } catch {
+          // DB error — don't sign out, just continue
         }
       }
       return token;
     },
 
     async session({ session, token }) {
-      if (!token.id) return { ...session, user: undefined as any }; // force sign-out
+      if (!token.id && !token.sub) return session; // pass through safely
       // token.sub is automatically set by NextAuth to user.id — use as fallback
       (session.user as any).id           = (token.id ?? token.sub) as string;
       (session.user as any).role         = token.role as string;
