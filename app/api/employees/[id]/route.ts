@@ -34,6 +34,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.bloodGroup !== undefined)  data.bloodGroup = body.bloodGroup || null;
     if (body.gender !== undefined)      data.gender = body.gender || null;
     if (body.status !== undefined)      data.status = body.status || "active";
+    if (body.customRoleId !== undefined) data.customRoleId = body.customRoleId || null;
 
     // Password reset
     if (body.password?.trim()) {
