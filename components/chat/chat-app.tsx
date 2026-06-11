@@ -157,6 +157,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [menuMsgId, setMenuMsgId] = useState<string | null>(null);
+  const [menuOpenTime, setMenuOpenTime] = useState(0);
   const [vanishingIds, setVanishingIds] = useState<Set<string>>(new Set());
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatType, setNewChatType] = useState<"direct" | "group">("direct");
@@ -742,7 +743,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                 const isEditing = editingId === msg.id;
                 const showMenu = menuMsgId === msg.id;
                 const isVanishing = vanishingIds.has(msg.id);
-                const msgAgeMs = Date.now() - new Date(msg.createdAt).getTime();
+                const msgAgeMs = menuOpenTime - new Date(msg.createdAt).getTime();
                 const canEdit = isMe && !isDeleted && !isSending && msgAgeMs < 15 * 60 * 1000;
                 const canDeleteForAll = (isMe || isAdmin) && !isDeleted && !isSending && (isAdmin || msgAgeMs < 24 * 60 * 60 * 1000);
 
@@ -782,7 +783,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                           {/* ── 3-dot menu button (hover) ── */}
                           {!isDeleted && !isSending && !isEditing && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); setMenuMsgId(showMenu ? null : msg.id); }}
+                              onClick={(e) => { e.stopPropagation(); if (!showMenu) setMenuOpenTime(Date.now()); setMenuMsgId(showMenu ? null : msg.id); }}
                               className={`absolute top-1 z-10 w-6 h-6 rounded-full items-center justify-center transition-all
                                 opacity-0 group-hover/msg:opacity-100
                                 ${isMe ? "-left-8" : "-right-8"}`}

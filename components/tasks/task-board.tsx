@@ -98,10 +98,10 @@ function TaskCard({ task, isAdmin, onStatusChange, onDelete }: {
   );
 }
 
-export default function TaskBoard({ initialTasks, employees, isAdmin, leads, clients }: {
-  initialTasks: any[]; employees: any[]; isAdmin: boolean; leads: any[]; clients: any[];
+export default function TaskBoard({ initialTasks, employees, isAdmin, leads }: {
+  initialTasks: any[]; employees: any[]; isAdmin: boolean; leads: any[]; clients?: any[];
 }) {
-  const router = useRouter();
+  const _router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
   const [showForm, setShowForm] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");

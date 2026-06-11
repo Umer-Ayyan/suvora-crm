@@ -110,7 +110,7 @@ export default function DocumentsSection({
         const err = await res.json();
         toast.error(err.error || "Upload failed");
       }
-    } catch (err) {
+    } catch {
       toast.error("Upload failed");
     } finally {
       setUploading(false);
@@ -279,8 +279,8 @@ export default function DocumentsSection({
         <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
           {documents.map((doc) => {
             const cat = docCategories[doc.category] ?? docCategories.other;
-            const isImg = doc.fileType.startsWith("image/");
-            const isPdf = doc.fileType === "application/pdf";
+            // const isImg = doc.fileType.startsWith("image/");
+            // const isPdf = doc.fileType === "application/pdf";
             return (
               <div key={doc.id} className="flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors">
                 {/* Icon */}
