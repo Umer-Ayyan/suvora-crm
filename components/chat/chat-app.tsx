@@ -174,7 +174,6 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [lastSeenMap, setLastSeenMap] = useState<Record<string, string | null>>({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const esRef = useRef<EventSource | null>(null);
   const activeRoomIdRef = useRef<string | null>(null);
   const scrollInstantRef = useRef(true);
   const loadRoomsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

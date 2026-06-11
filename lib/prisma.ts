@@ -4,9 +4,17 @@ declare global {
   var prisma: PrismaClient | undefined; // eslint-disable-line no-var
 }
 
+// On Vercel serverless each invocation creates a new client.
+// connection_limit=1 prevents exhausting the Supabase pool.
 export const prisma =
   global.prisma ||
-  new PrismaClient();
+  new PrismaClient({
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL,
+      },
+    },
+  });
 
 if (process.env.NODE_ENV !== "production") {
   global.prisma = prisma;
