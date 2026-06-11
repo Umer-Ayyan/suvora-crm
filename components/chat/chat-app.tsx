@@ -203,13 +203,13 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     }
   }, []);
 
-  // Background poll every 12s
+  // Background poll rooms every 5s
   useEffect(() => {
-    const t = setInterval(() => void loadRooms(), 12000);
+    const t = setInterval(() => void loadRooms(), 5000);
     return () => clearInterval(t);
   }, [loadRooms]);
 
-  // ── Load messages ───────────────────────────────────────────────────────────
+  // ── Load messages (full fetch) ──────────────────────────────────────────────
   const loadMessages = useCallback(async (roomId: string) => {
     setLoadingMessages(true);
     try {
@@ -225,125 +225,92 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   // Keep ref in sync
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
 
-  // ── Global SSE (all rooms) ──────────────────────────────────────────────────
-  useEffect(() => {
-    function connect() {
-      const es = new EventSource("/api/chat/stream");
-      es.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data) as { __type: string; __roomId: string } & Message;
-          if (data.__type !== "message") return;
-          const { __roomId: roomId, ...msg } = data;
-          void loadRooms();
-          if (activeRoomIdRef.current === roomId) {
-            scrollInstantRef.current = false;
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === msg.id)) return prev;
-              const tempIdx = prev.findIndex(
-                (m) => m.tempId && m.senderId === msg.senderId && m.content === msg.content && m.status === "sending"
-              );
-              if (tempIdx !== -1) {
-                const next = [...prev];
-                next[tempIdx] = msg as Message;
-                return next;
-              }
-              return [...prev, msg as Message];
-            });
-            void fetch(`/api/chat/rooms/${roomId}/read`, { method: "POST" });
-          } else {
-            setUnreadCounts((prev) => ({ ...prev, [roomId]: (prev[roomId] ?? 0) + 1 }));
-            // Browser push notification when message arrives in a room NOT currently open
-            if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && msg.senderId !== currentUserId) {
-              const senderName = msg.sender?.name ?? "Someone";
-              const roomName = rooms.find((r) => r.id === roomId)
-                ? getRoomName(rooms.find((r) => r.id === roomId)!, currentUserId)
-                : "Team Chat";
-              new Notification(`${senderName} · ${roomName}`, {
-                body: msg.content?.slice(0, 80) || "New message",
-                icon: "/favicon.ico",
-                tag: roomId, // Replace existing notification from same room
-              });
-            }
-          }
-        } catch { /* ignore */ }
-      };
-      es.onerror = () => { es.close(); setTimeout(connect, 3000); };
-      return es;
-    }
-    const es = connect();
-    return () => es.close();
-  }, [loadRooms]);
+  // ── Active room polling — fetch new messages every 2.5s ────────────────────
+  // SSE does not work on Vercel serverless (different instances). Polling is reliable.
+  const lastMsgIdRef = useRef<string | null>(null);
 
-  // ── Room SSE (active room) ──────────────────────────────────────────────────
   useEffect(() => {
     if (!activeRoomId) return;
     void loadMessages(activeRoomId);
 
-    if (esRef.current) { esRef.current.close(); esRef.current = null; }
-
-    function connectRoom(roomId: string) {
-      const es = new EventSource(`/api/chat/rooms/${roomId}/stream`);
-      esRef.current = es;
-      es.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (activeRoomIdRef.current !== roomId) return;
-
-          if (data.__type === "read") {
-            setMessages((prev) => prev.map((m) =>
-              m.senderId === currentUserId && !m.readBy.some((r) => r.userId === data.readerId)
-                ? { ...m, readBy: [...m.readBy, { userId: data.readerId }] } : m
-            ));
-            return;
-          }
-          if (data.__type === "edit") {
-            setMessages((prev) => prev.map((m) =>
-              m.id === data.messageId ? { ...m, content: data.content, editedAt: new Date().toISOString() } : m
-            ));
-            return;
-          }
-          if (data.__type === "delete") {
-            // Animate vanish first, then show deleted placeholder
-            spawnParticles(data.messageId);
-            setVanishingIds((prev) => new Set([...prev, data.messageId]));
-            setTimeout(() => {
-              setMessages((prev) => prev.map((m) =>
-                m.id === data.messageId ? { ...m, isDeleted: true, content: "" } : m
-              ));
-              setVanishingIds((prev) => { const n = new Set(prev); n.delete(data.messageId); return n; });
-            }, 420);
-            return;
-          }
-          scrollInstantRef.current = false;
-          setMessages((prev) => {
-            // Already have it by real id
-            if (prev.some((m) => m.id === data.id)) return prev;
-            // Replace optimistic temp message (same sender + content, still pending)
-            const tempIdx = prev.findIndex(
-              (m) => m.tempId && m.senderId === data.senderId && m.content === data.content && m.status === "sending"
-            );
-            if (tempIdx !== -1) {
-              const next = [...prev];
-              next[tempIdx] = data as Message;
-              return next;
-            }
-            return [...prev, data as Message];
+    const pollMessages = async () => {
+      const roomId = activeRoomIdRef.current;
+      if (!roomId) return;
+      try {
+        const res = await fetch(`/api/chat/rooms/${roomId}/messages`);
+        if (!res.ok) return;
+        const fresh: Message[] = await res.json();
+        if (!fresh.length) return;
+        const latestId = fresh[fresh.length - 1].id;
+        if (latestId === lastMsgIdRef.current) return; // nothing new
+        lastMsgIdRef.current = latestId;
+        scrollInstantRef.current = false;
+        setMessages((prev) => {
+          // Merge: keep optimistic/sending messages, add any new server messages
+          const serverIds = new Set(fresh.map((m) => m.id));
+          const pendingOptimistic = prev.filter((m) => m.tempId && m.status === "sending");
+          // Replace confirmed messages that match pending optimistic ones
+          const merged = fresh.map((m) => {
+            const opt = pendingOptimistic.find((o) => o.senderId === m.senderId && o.content === m.content);
+            return opt ? { ...m } : m;
           });
-          void loadRooms();
-        } catch { /* ignore */ }
-      };
-      es.onerror = () => {
-        es.close(); esRef.current = null;
-        const cur = activeRoomIdRef.current;
-        if (cur === roomId) {
-          void loadMessages(cur);
-          setTimeout(() => { if (activeRoomIdRef.current === roomId) connectRoom(roomId); }, 2000);
-        }
-      };
-    }
-    connectRoom(activeRoomId);
-    return () => { esRef.current?.close(); esRef.current = null; };
-  }, [activeRoomId, loadMessages, loadRooms, currentUserId]);
+          // Keep any still-pending optimistic messages not yet confirmed
+          const stillPending = pendingOptimistic.filter(
+            (o) => !fresh.some((m) => m.senderId === o.senderId && m.content === o.content)
+          );
+          // Keep failed messages
+          const failed = prev.filter((m) => m.status === "failed" && !serverIds.has(m.id));
+          return [...merged, ...stillPending, ...failed];
+        });
+        // Mark as read
+        void fetch(`/api/chat/rooms/${roomId}/read`, { method: "POST" });
+        // Refresh sidebar
+        void loadRooms();
+      } catch { /* silent */ }
+    };
+
+    lastMsgIdRef.current = null;
+    const t = setInterval(pollMessages, 2500);
+    return () => clearInterval(t);
+  }, [activeRoomId, loadMessages, loadRooms]);
+
+  // ── All rooms poll — detect unread counts & send push notifications ─────────
+  const prevRoomsRef = useRef<Room[]>([]);
+  useEffect(() => {
+    const pollAllRooms = async () => {
+      try {
+        const res = await fetch("/api/chat/rooms");
+        if (!res.ok) return;
+        const freshRooms: Room[] = await res.json();
+        if (!Array.isArray(freshRooms)) return;
+
+        freshRooms.forEach((room) => {
+          if (room.id === activeRoomIdRef.current) return; // skip active room
+          const prev = prevRoomsRef.current.find((r) => r.id === room.id);
+          const prevLastMsg = prev?.messages?.[0];
+          const newLastMsg  = room.messages?.[0];
+          if (!newLastMsg) return;
+          if (prevLastMsg?.id === newLastMsg.id) return; // no new message
+          if (newLastMsg.sender?.id === currentUserId) return; // own message
+          // New message in background room
+          setUnreadCounts((c) => ({ ...c, [room.id]: (c[room.id] ?? 0) + 1 }));
+          if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+            new Notification(`${newLastMsg.sender?.name ?? "Someone"} · ${getRoomName(room, currentUserId)}`, {
+              body: newLastMsg.content?.slice(0, 80) || "New message",
+              icon: "/favicon.ico",
+              tag: room.id,
+            });
+          }
+        });
+        prevRoomsRef.current = freshRooms;
+        setRooms(freshRooms);
+        setLoadingRooms(false);
+      } catch { /* silent */ }
+    };
+
+    const t = setInterval(pollAllRooms, 4000);
+    return () => clearInterval(t);
+  }, [currentUserId, loadRooms]);
 
   // Tab visibility reload
   useEffect(() => {
