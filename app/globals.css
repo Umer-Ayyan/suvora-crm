@@ -2,6 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Chat message vanish animation (Telegram-style) ─────────────────────────*/
+@keyframes msgVanish {
+  0%   { transform: scale(1)    translateY(0px);  opacity: 1;   filter: blur(0px);   }
+  15%  { transform: scale(1.06) translateY(-3px); opacity: 0.9; filter: blur(0px);   }
+  60%  { transform: scale(0.55) translateY(-12px);opacity: 0.4; filter: blur(3px);   }
+  100% { transform: scale(0.1)  translateY(-24px);opacity: 0;   filter: blur(8px);   }
+}
+
+@keyframes msgCollapse {
+  0%   { max-height: 120px; margin-bottom: 4px; opacity: 1; }
+  100% { max-height: 0px;   margin-bottom: 0px; opacity: 0; padding: 0; }
+}
+
+@keyframes deletedFadeIn {
+  0%   { opacity: 0; transform: scale(0.8) translateY(6px); }
+  100% { opacity: 1; transform: scale(1)   translateY(0px); }
+}
+
+@keyframes sparkle {
+  0%   { transform: scale(0) rotate(0deg);   opacity: 1; }
+  50%  { transform: scale(1.5) rotate(180deg); opacity: 0.6; }
+  100% { transform: scale(0) rotate(360deg); opacity: 0; }
+}
+
+.msg-vanishing .msg-bubble {
+  animation: msgVanish 0.42s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.msg-vanishing {
+  animation: msgCollapse 0.42s cubic-bezier(0.4, 0, 0.2, 1) 0.25s forwards;
+  overflow: hidden;
+}
+
+.msg-deleted-appear {
+  animation: deletedFadeIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.sparkle-particle {
+  position: absolute;
+  pointer-events: none;
+  animation: sparkle 0.6s ease-out forwards;
+}
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 :root {
   --bg-base: #05050a;
   --bg-elevated: #0d0d14;

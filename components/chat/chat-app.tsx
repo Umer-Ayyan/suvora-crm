@@ -157,6 +157,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [menuMsgId, setMenuMsgId] = useState<string | null>(null);
+  const [vanishingIds, setVanishingIds] = useState<Set<string>>(new Set());
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatType, setNewChatType] = useState<"direct" | "group">("direct");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -271,9 +272,14 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
             return;
           }
           if (data.__type === "delete") {
-            setMessages((prev) => prev.map((m) =>
-              m.id === data.messageId ? { ...m, isDeleted: true, content: "" } : m
-            ));
+            // Animate vanish first, then show deleted placeholder
+            setVanishingIds((prev) => new Set([...prev, data.messageId]));
+            setTimeout(() => {
+              setMessages((prev) => prev.map((m) =>
+                m.id === data.messageId ? { ...m, isDeleted: true, content: "" } : m
+              ));
+              setVanishingIds((prev) => { const n = new Set(prev); n.delete(data.messageId); return n; });
+            }, 420);
             return;
           }
           scrollInstantRef.current = false;
@@ -416,13 +422,20 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   async function deleteMessage(msgId: string, deleteType: "everyone" | "me") {
     if (!activeRoomId) return;
     setMenuMsgId(null);
-    if (deleteType === "me") {
-      // Optimistic: remove from local state only
-      setMessages((prev) => prev.filter((m) => m.id !== msgId));
-    } else {
-      // Optimistic: show deleted placeholder for everyone
-      setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m));
-    }
+
+    // Step 1: start vanish animation
+    setVanishingIds((prev) => new Set([...prev, msgId]));
+
+    // Step 2: after animation completes, apply the actual state change
+    setTimeout(() => {
+      if (deleteType === "me") {
+        setMessages((prev) => prev.filter((m) => m.id !== msgId));
+      } else {
+        setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m));
+      }
+      setVanishingIds((prev) => { const n = new Set(prev); n.delete(msgId); return n; });
+    }, 420); // matches animation duration
+
     await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -728,12 +741,15 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                 const isDeleted = !!msg.isDeleted;
                 const isEditing = editingId === msg.id;
                 const showMenu = menuMsgId === msg.id;
+                const isVanishing = vanishingIds.has(msg.id);
                 const msgAgeMs = Date.now() - new Date(msg.createdAt).getTime();
                 const canEdit = isMe && !isDeleted && !isSending && msgAgeMs < 15 * 60 * 1000;
                 const canDeleteForAll = (isMe || isAdmin) && !isDeleted && !isSending && (isAdmin || msgAgeMs < 24 * 60 * 60 * 1000);
 
                 return (
-                  <div key={msg.tempId ?? msg.id} onClick={() => setMenuMsgId(null)}>
+                  <div key={msg.tempId ?? msg.id}
+                    className={isVanishing ? "msg-vanishing" : ""}
+                    onClick={() => setMenuMsgId(null)}>
                     {/* Date separator */}
                     {showDateSep && (
                       <div className="flex items-center gap-3 my-4">
@@ -829,7 +845,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                           {/* ── Bubble ── */}
                           {isDeleted ? (
                             /* Deleted message */
-                            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl"
+                            <div className="msg-deleted-appear flex items-center gap-2 px-3.5 py-2.5 rounded-2xl"
                               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
                               <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.8} style={{ width: 14, height: 14 }}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
@@ -866,7 +882,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                             </div>
                           ) : (
                             /* Normal bubble */
-                            <div className="px-3.5 py-2.5 rounded-2xl"
+                            <div className="msg-bubble px-3.5 py-2.5 rounded-2xl"
                               style={{
                                 background: isFailed ? "rgba(239,68,68,0.15)" : isMe ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.07)",
                                 borderBottomRightRadius: isMe ? 4 : undefined,
