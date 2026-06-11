@@ -251,11 +251,21 @@ model ChatMessage {
   createdAt DateTime @default(now())
   editedAt  DateTime?
   isDeleted Boolean  @default(false)
+
+  // Reply threading
+  replyToId String?
+  replyTo   ChatMessage?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   ChatMessage[] @relation("MessageReplies")
+
+  // Emoji reactions: { "👍": ["userId1","userId2"], "❤️": ["userId3"] }
+  reactions Json?
+
   readBy    ChatMessageRead[]
   hiddenBy  ChatMessageHide[]
 
   @@index([roomId, createdAt])
   @@index([senderId])
+  @@index([replyToId])
 }
 
 model ChatMessageHide {

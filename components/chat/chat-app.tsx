@@ -4,134 +4,92 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase-client";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 type Employee = { id: string; name: string; employeeId: string; role: string; designation: string | null };
-type Member = { id: string; user: { id: string; name: string; employeeId: string; role: string; lastSeenAt: string | null } };
-type LastMsg = { id: string; content: string; sender: { id: string; name: string }; createdAt: string };
-type Room = { id: string; name: string | null; type: string; members: Member[]; messages: LastMsg[] };
-type Message = {
+type Member   = { id: string; user: { id: string; name: string; employeeId: string; role: string; lastSeenAt: string | null } };
+type LastMsg  = { id: string; content: string; sender: { id: string; name: string }; createdAt: string };
+type Room     = { id: string; name: string | null; type: string; members: Member[]; messages: LastMsg[] };
+type ReplyTo  = { id: string; content: string; isDeleted: boolean; sender: { id: string; name: string } };
+type Message  = {
   id: string; content: string; senderId: string;
   sender: { id: string; name: string }; createdAt: string;
   readBy: { userId: string }[];
   editedAt?: string | null;
   isDeleted?: boolean;
-  // optimistic-only fields (not in DB)
+  replyToId?: string | null;
+  replyTo?: ReplyTo | null;
+  reactions?: Record<string, string[]> | null;
+  // client-only
   status?: "sending" | "failed";
   tempId?: string;
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function getRoomName(room: Room, currentUserId: string) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function getRoomName(room: Room, uid: string) {
   if (room.type === "group") return room.name || "Group Chat";
-  const other = room.members.find((m) => m.user.id !== currentUserId);
-  return other?.user.name || "Direct Message";
+  return room.members.find((m) => m.user.id !== uid)?.user.name || "Direct Message";
 }
 
-function getAvatarColor(name: string) {
-  const colors = [
-    ["#7c3aed","#4f46e5"], ["#db2777","#9333ea"], ["#059669","#0891b2"],
-    ["#d97706","#dc2626"], ["#0284c7","#7c3aed"], ["#16a34a","#059669"],
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return colors[Math.abs(hash) % colors.length];
+const GRAD_PALETTE = [
+  ["#7c3aed","#4f46e5"], ["#db2777","#9333ea"], ["#059669","#0891b2"],
+  ["#d97706","#dc2626"], ["#0284c7","#7c3aed"], ["#16a34a","#059669"],
+  ["#9333ea","#ec4899"], ["#0891b2","#06b6d4"],
+];
+function getAvatarColors(name: string): [string, string] {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  return GRAD_PALETTE[Math.abs(h) % GRAD_PALETTE.length] as [string, string];
 }
 
-function formatTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", hour12: true });
+function fmt(d: string) {
+  return new Date(d).toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", hour12: true });
 }
-
-function formatSidebarTime(dateStr: string) {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
+function fmtSidebar(d: string) {
+  const diff = (Date.now() - new Date(d).getTime()) / 1000;
   if (diff < 60) return "now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return d.toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", hour12: true });
-  if (diff < 604800) return d.toLocaleDateString("en-PK", { weekday: "short" });
-  return d.toLocaleDateString("en-PK", { day: "numeric", month: "short" });
+  const date = new Date(d);
+  if (diff < 86400) return date.toLocaleTimeString("en-PK", { hour: "numeric", minute: "2-digit", hour12: true });
+  if (diff < 604800) return date.toLocaleDateString("en-PK", { weekday: "short" });
+  return date.toLocaleDateString("en-PK", { day: "numeric", month: "short" });
 }
-
-function formatDateSeparator(dateStr: string) {
-  const d = new Date(dateStr);
-  const now = new Date();
+function fmtDateSep(d: string) {
+  const date = new Date(d);
+  const now  = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 86400000);
-  const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  if (msgDate.getTime() === today.getTime()) return "Today";
-  if (msgDate.getTime() === yesterday.getTime()) return "Yesterday";
-  return d.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
+  const yest  = new Date(today.getTime() - 86400000);
+  const msgD  = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (msgD.getTime() === today.getTime()) return "Today";
+  if (msgD.getTime() === yest.getTime())  return "Yesterday";
+  return date.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
 }
-
-// Online = seen within last 60 seconds
-function isOnline(lastSeenAt: string | null | undefined) {
-  if (!lastSeenAt) return false;
-  return Date.now() - new Date(lastSeenAt).getTime() < 60_000;
-}
-
-function formatLastSeen(lastSeenAt: string | null | undefined) {
-  if (!lastSeenAt) return "Offline";
-  const diff = Math.floor((Date.now() - new Date(lastSeenAt).getTime()) / 1000);
-  if (diff < 60) return "Online";
-  if (diff < 3600) return `Last seen ${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `Last seen ${Math.floor(diff / 3600)}h ago`;
-  return `Last seen ${new Date(lastSeenAt).toLocaleDateString([], { day: "numeric", month: "short" })}`;
-}
-
-function isSameDay(a: string, b: string) {
+function sameDay(a: string, b: string) {
   const da = new Date(a), db = new Date(b);
   return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
 }
+function isOnline(t: string | null | undefined) {
+  return !!t && Date.now() - new Date(t).getTime() < 60_000;
+}
+function fmtLastSeen(t: string | null | undefined) {
+  if (!t) return "Offline";
+  const s = Math.floor((Date.now() - new Date(t).getTime()) / 1000);
+  if (s < 60)    return "Online";
+  if (s < 3600)  return `Last seen ${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `Last seen ${Math.floor(s / 3600)}h ago`;
+  return `Last seen ${new Date(t).toLocaleDateString([], { day: "numeric", month: "short" })}`;
+}
 
-// ── Avatar ────────────────────────────────────────────────────────────────────
-function Avatar({ name, size = 40, className = "" }: { name: string; size?: number; className?: string }) {
-  const [c1, c2] = getAvatarColor(name);
+// ── Sub-components ────────────────────────────────────────────────────────────
+function Avatar({ name, size = 40, cls = "" }: { name: string; size?: number; cls?: string }) {
+  const [c1, c2] = getAvatarColors(name);
   return (
-    <div
-      className={`flex items-center justify-center font-bold text-white flex-shrink-0 ${className}`}
-      style={{
-        width: size, height: size,
-        borderRadius: size * 0.3,
-        background: `linear-gradient(135deg, ${c1}, ${c2})`,
-        fontSize: size * 0.38,
-      }}
-    >
+    <div className={`flex items-center justify-center font-bold text-white flex-shrink-0 ${cls}`}
+      style={{ width: size, height: size, borderRadius: size * 0.3, background: `linear-gradient(135deg,${c1},${c2})`, fontSize: size * 0.38 }}>
       {name[0]?.toUpperCase()}
     </div>
   );
 }
 
-// ── Message status indicator ──────────────────────────────────────────────────
-function MessageStatus({ status, isRead }: { status?: "sending" | "failed"; isRead: boolean }) {
-  // Sending → clock icon
-  if (status === "sending") {
-    return (
-      <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13, flexShrink: 0 }}>
-        <circle cx="8" cy="8" r="6.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.4"/>
-        <path d="M8 5v3.5l2 1.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    );
-  }
-  // Failed → exclamation
-  if (status === "failed") {
-    return (
-      <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13, flexShrink: 0 }}>
-        <circle cx="8" cy="8" r="6.5" stroke="#f87171" strokeWidth="1.4"/>
-        <path d="M8 5v4" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"/>
-        <circle cx="8" cy="11" r="0.8" fill="#f87171"/>
-      </svg>
-    );
-  }
-  // Sent / Read → double ticks
-  const color = isRead ? "#60a5fa" : "rgba(255,255,255,0.45)";
-  return (
-    <svg viewBox="0 0 18 11" fill="none" style={{ width: 16, height: 10, flexShrink: 0 }}>
-      <path d="M1 5.5L4.5 9L9.5 1" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M6 5.5L9.5 9L14.5 1" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-// ── Group icon ────────────────────────────────────────────────────────────────
 function GroupAvatar({ size = 40 }: { size?: number }) {
   return (
     <div className="flex items-center justify-center flex-shrink-0"
@@ -143,75 +101,119 @@ function GroupAvatar({ size = 40 }: { size?: number }) {
   );
 }
 
+function MsgStatus({ status, isRead }: { status?: "sending" | "failed"; isRead: boolean }) {
+  if (status === "sending") return (
+    <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13, flexShrink: 0 }}>
+      <circle cx="8" cy="8" r="6.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.4"/>
+      <path d="M8 5v3.5l2 1.5" stroke="rgba(255,255,255,0.35)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  if (status === "failed") return (
+    <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13, flexShrink: 0 }}>
+      <circle cx="8" cy="8" r="6.5" stroke="#f87171" strokeWidth="1.4"/>
+      <path d="M8 5v4" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"/>
+      <circle cx="8" cy="11" r="0.8" fill="#f87171"/>
+    </svg>
+  );
+  const color = isRead ? "#60a5fa" : "rgba(255,255,255,0.4)";
+  return (
+    <svg viewBox="0 0 18 11" fill="none" style={{ width: 16, height: 10, flexShrink: 0 }}>
+      <path d="M1 5.5L4.5 9L9.5 1" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M6 5.5L9.5 9L14.5 1" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// Typing dots animation
+function TypingDots() {
+  return (
+    <span className="inline-flex items-center gap-[3px]">
+      {[0,1,2].map((i) => (
+        <span key={i} className="w-1.5 h-1.5 rounded-full bg-violet-400"
+          style={{ animation: `typing-dot 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+      ))}
+    </span>
+  );
+}
+
+const QUICK_EMOJIS = ["👍","❤️","😂","😮","😢","🔥"];
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ChatApp({ currentUserId, currentUserName, isAdmin, employees }: {
-  currentUserId: string;
-  currentUserName: string;
-  isAdmin: boolean;
-  employees: Employee[];
+  currentUserId: string; currentUserName: string; isAdmin: boolean; employees: Employee[];
 }) {
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [rooms, setRooms]               = useState<Room[]>([]);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [sending] = useState(false); // kept for button UI only
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editContent, setEditContent] = useState("");
-  const [menuMsgId, setMenuMsgId] = useState<string | null>(null);
+  const [messages, setMessages]         = useState<Message[]>([]);
+  const [input, setInput]               = useState("");
+  const [editingId, setEditingId]       = useState<string | null>(null);
+  const [editContent, setEditContent]   = useState("");
+  const [menuMsgId, setMenuMsgId]       = useState<string | null>(null);
   const [menuOpenTime, setMenuOpenTime] = useState(0);
+  const [reactionMsgId, setReactionMsgId] = useState<string | null>(null);
   const [vanishingIds, setVanishingIds] = useState<Set<string>>(new Set());
-  const [showNewChat, setShowNewChat] = useState(false);
-  const [newChatType, setNewChatType] = useState<"direct" | "group">("direct");
+  const [showNewChat, setShowNewChat]   = useState(false);
+  const [newChatType, setNewChatType]   = useState<"direct" | "group">("direct");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
-  const [groupName, setGroupName] = useState("");
-  const [roleFilter, setRoleFilter] = useState("");
+  const [groupName, setGroupName]       = useState("");
+  const [roleFilter, setRoleFilter]     = useState("");
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [spyMode, setSpyMode] = useState(false);
+  const [spyMode, setSpyMode]           = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-  // lastSeenAt per userId for live online tracking
-  const [lastSeenMap, setLastSeenMap] = useState<Record<string, string | null>>({});
+  const [lastSeenMap, setLastSeenMap]   = useState<Record<string, string | null>>({});
+  const [typingUsers, setTypingUsers]   = useState<Record<string, string>>({}); // userId → name
+  const [replyTo, setReplyTo]           = useState<Message | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [newMsgCount, setNewMsgCount]   = useState(0);
+  const [msgSearch, setMsgSearch]       = useState("");
+  const [showMsgSearch, setShowMsgSearch] = useState(false);
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const activeRoomIdRef = useRef<string | null>(null);
-  const scrollInstantRef = useRef(true);
-  const loadRoomsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const activeRoomIdRef      = useRef<string | null>(null);
+  const scrollInstantRef     = useRef(true);
+  const isAtBottomRef        = useRef(true);
+  const inputRef             = useRef<HTMLTextAreaElement>(null);
+  const realtimeChannelRef   = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevRoomsRef         = useRef<Room[]>([]);
+  const loadRoomsTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
+  const activeRoom = rooms.find((r) => r.id === activeRoomId) ?? null;
 
-  // ── Load rooms (debounced) ──────────────────────────────────────────────────
-  const loadRooms = useCallback(() => {
+  // ── Load rooms (debounced) ────────────────────────────────────────────────
+  const loadRooms = useCallback(async () => {
     if (loadRoomsTimerRef.current) clearTimeout(loadRoomsTimerRef.current);
-    loadRoomsTimerRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch("/api/chat/rooms");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (Array.isArray(data)) { setRooms(data); setLoadingRooms(false); }
-      } catch { /* silent */ }
-    }, 300);
+    return new Promise<void>((resolve) => {
+      loadRoomsTimerRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch("/api/chat/rooms");
+          if (!res.ok) return resolve();
+          const data = await res.json();
+          if (!Array.isArray(data)) return resolve();
+          setRooms(data);
+          setLoadingRooms(false);
+        } catch { /* silent */ }
+        resolve();
+      }, 200);
+    });
   }, []);
 
   useEffect(() => { void loadRooms(); }, [loadRooms]);
 
-  // ── Request browser notification permission on mount ───────────────────────
+  // ── Notification permission ───────────────────────────────────────────────
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
+      void Notification.requestPermission();
     }
   }, []);
 
-  // Background poll rooms every 5s
-  useEffect(() => {
-    const t = setInterval(() => void loadRooms(), 5000);
-    return () => clearInterval(t);
-  }, [loadRooms]);
-
-  // ── Load messages (full fetch) ──────────────────────────────────────────────
+  // ── Load messages ─────────────────────────────────────────────────────────
   const loadMessages = useCallback(async (roomId: string) => {
     setLoadingMessages(true);
+    setMsgSearch("");
+    setShowMsgSearch(false);
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`);
       if (res.ok) {
@@ -222,50 +224,48 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     finally { setLoadingMessages(false); }
   }, []);
 
-  // Keep ref in sync
   useEffect(() => { activeRoomIdRef.current = activeRoomId; }, [activeRoomId]);
 
-  // ── Supabase Realtime Broadcast — instant message delivery ────────────────
-  // Uses Supabase WebSocket channels (works on Vercel serverless, no SSE needed)
-  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-
+  // ── Supabase Realtime channel per room ────────────────────────────────────
   useEffect(() => {
     if (!activeRoomId) return;
     void loadMessages(activeRoomId);
+    setTypingUsers({});
+    setReplyTo(null);
 
-    // Clean up previous channel
     if (realtimeChannelRef.current) {
       void supabase.removeChannel(realtimeChannelRef.current);
       realtimeChannelRef.current = null;
     }
 
-    const channelName = `room:${activeRoomId}`;
-    const ch = supabase.channel(channelName, { config: { broadcast: { self: false } } });
+    const ch = supabase.channel(`room:${activeRoomId}`, { config: { broadcast: { self: false } } });
 
     ch.on("broadcast", { event: "new_message" }, ({ payload }: { payload: Message }) => {
       if (activeRoomIdRef.current !== activeRoomId) return;
-      scrollInstantRef.current = false;
       setMessages((prev) => {
         if (prev.some((m) => m.id === payload.id)) return prev;
-        // Replace matching optimistic message
         const tempIdx = prev.findIndex(
           (m) => m.tempId && m.senderId === payload.senderId && m.content === payload.content && m.status === "sending"
         );
-        if (tempIdx !== -1) {
-          const next = [...prev];
-          next[tempIdx] = payload;
-          return next;
-        }
+        if (tempIdx !== -1) { const n = [...prev]; n[tempIdx] = payload; return n; }
         return [...prev, payload];
       });
+      if (isAtBottomRef.current) {
+        scrollInstantRef.current = false;
+      } else {
+        setNewMsgCount((c) => c + 1);
+        setShowScrollBtn(true);
+      }
       void fetch(`/api/chat/rooms/${activeRoomId}/read`, { method: "POST" });
       void loadRooms();
     })
+
     .on("broadcast", { event: "edit_message" }, ({ payload }: { payload: { messageId: string; content: string } }) => {
       setMessages((prev) => prev.map((m) =>
         m.id === payload.messageId ? { ...m, content: payload.content, editedAt: new Date().toISOString() } : m
       ));
     })
+
     .on("broadcast", { event: "delete_message" }, ({ payload }: { payload: { messageId: string } }) => {
       spawnParticles(payload.messageId);
       setVanishingIds((prev) => new Set([...prev, payload.messageId]));
@@ -276,55 +276,77 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
         setVanishingIds((prev) => { const n = new Set(prev); n.delete(payload.messageId); return n; });
       }, 420);
     })
+
+    .on("broadcast", { event: "reaction" }, ({ payload }: { payload: { messageId: string; reactions: Record<string, string[]> } }) => {
+      setMessages((prev) => prev.map((m) =>
+        m.id === payload.messageId ? { ...m, reactions: payload.reactions } : m
+      ));
+    })
+
+    .on("broadcast", { event: "typing" }, ({ payload }: { payload: { userId: string; name: string; isTyping: boolean } }) => {
+      if (payload.userId === currentUserId) return;
+      setTypingUsers((prev) => {
+        if (payload.isTyping) return { ...prev, [payload.userId]: payload.name };
+        const next = { ...prev }; delete next[payload.userId]; return next;
+      });
+    })
+
+    .on("broadcast", { event: "read" }, ({ payload }: { payload: { userId: string; messageIds: string[] } }) => {
+      if (payload.userId === currentUserId) return;
+      const ids = new Set(payload.messageIds);
+      setMessages((prev) => prev.map((m) =>
+        ids.has(m.id) && !m.readBy?.some((r) => r.userId === payload.userId)
+          ? { ...m, readBy: [...(m.readBy ?? []), { userId: payload.userId }] }
+          : m
+      ));
+    })
+
     .subscribe();
 
     realtimeChannelRef.current = ch;
-
     return () => {
       void supabase.removeChannel(ch);
       realtimeChannelRef.current = null;
     };
-  }, [activeRoomId, loadMessages, loadRooms]);
+  }, [activeRoomId, loadMessages, loadRooms, currentUserId]);
 
-  // ── All rooms poll — detect unread counts & send push notifications ─────────
-  const prevRoomsRef = useRef<Room[]>([]);
+  // ── Background room poll (sidebar + notifications) ────────────────────────
   useEffect(() => {
-    const pollAllRooms = async () => {
+    const poll = async () => {
       try {
         const res = await fetch("/api/chat/rooms");
         if (!res.ok) return;
-        const freshRooms: Room[] = await res.json();
-        if (!Array.isArray(freshRooms)) return;
+        const fresh: Room[] = await res.json();
+        if (!Array.isArray(fresh)) return;
 
-        freshRooms.forEach((room) => {
-          if (room.id === activeRoomIdRef.current) return; // skip active room
-          const prev = prevRoomsRef.current.find((r) => r.id === room.id);
-          const prevLastMsg = prev?.messages?.[0];
-          const newLastMsg  = room.messages?.[0];
-          if (!newLastMsg) return;
-          if (prevLastMsg?.id === newLastMsg.id) return; // no new message
-          if (newLastMsg.sender?.id === currentUserId) return; // own message
-          // New message in background room
+        fresh.forEach((room) => {
+          if (room.id === activeRoomIdRef.current) return;
+          const prev    = prevRoomsRef.current.find((r) => r.id === room.id);
+          const newMsg  = room.messages?.[0];
+          const prevMsg = prev?.messages?.[0];
+          if (!newMsg || prevMsg?.id === newMsg.id || newMsg.sender?.id === currentUserId) return;
+
           setUnreadCounts((c) => ({ ...c, [room.id]: (c[room.id] ?? 0) + 1 }));
           if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-            new Notification(`${newLastMsg.sender?.name ?? "Someone"} · ${getRoomName(room, currentUserId)}`, {
-              body: newLastMsg.content?.slice(0, 80) || "New message",
+            new Notification(`${newMsg.sender?.name ?? "Someone"} · ${getRoomName(room, currentUserId)}`, {
+              body: newMsg.content?.slice(0, 80) || "New message",
               icon: "/favicon.ico",
               tag: room.id,
             });
           }
         });
-        prevRoomsRef.current = freshRooms;
-        setRooms(freshRooms);
+
+        prevRoomsRef.current = fresh;
+        setRooms(fresh);
         setLoadingRooms(false);
       } catch { /* silent */ }
     };
 
-    const t = setInterval(pollAllRooms, 4000);
+    const t = setInterval(poll, 5000);
     return () => clearInterval(t);
-  }, [currentUserId, loadRooms]);
+  }, [currentUserId]);
 
-  // Tab visibility reload
+  // ── Visibility change ─────────────────────────────────────────────────────
   useEffect(() => {
     const fn = () => {
       if (document.visibilityState === "visible") {
@@ -336,45 +358,81 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     return () => document.removeEventListener("visibilitychange", fn);
   }, [loadMessages, loadRooms]);
 
-  // ── Heartbeat: update own lastSeenAt every 30s ──────────────────────────────
+  // ── Heartbeat ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const beat = () => fetch("/api/user/heartbeat", { method: "POST" }).catch(() => {});
-    void beat(); // immediate on mount
+    void beat();
     const t = setInterval(beat, 30_000);
     return () => clearInterval(t);
   }, []);
 
-  // ── Sync lastSeenAt from room members into local map ────────────────────────
+  // ── Sync lastSeenAt ───────────────────────────────────────────────────────
   useEffect(() => {
     const map: Record<string, string | null> = {};
     rooms.forEach((r) => r.members.forEach((m) => { map[m.user.id] = m.user.lastSeenAt; }));
     setLastSeenMap((prev) => ({ ...prev, ...map }));
   }, [rooms]);
 
-  // ── Scroll to bottom ────────────────────────────────────────────────────────
+  // ── Scroll management ─────────────────────────────────────────────────────
   useLayoutEffect(() => {
     const c = messagesContainerRef.current;
     if (!c) return;
     if (scrollInstantRef.current) {
       c.scrollTop = c.scrollHeight;
-    } else {
+      setShowScrollBtn(false);
+      setNewMsgCount(0);
+    } else if (isAtBottomRef.current) {
       c.scrollTo({ top: c.scrollHeight, behavior: "smooth" });
     }
   }, [messages]);
 
-  // ── Auto-resize textarea ────────────────────────────────────────────────────
+  function handleScroll() {
+    const c = messagesContainerRef.current;
+    if (!c) return;
+    const atBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 80;
+    isAtBottomRef.current = atBottom;
+    if (atBottom) { setShowScrollBtn(false); setNewMsgCount(0); }
+    else setShowScrollBtn(true);
+  }
+
+  function scrollToBottom() {
+    const c = messagesContainerRef.current;
+    if (!c) return;
+    c.scrollTo({ top: c.scrollHeight, behavior: "smooth" });
+    setShowScrollBtn(false);
+    setNewMsgCount(0);
+  }
+
+  // ── Auto-resize textarea ──────────────────────────────────────────────────
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+
+    // Typing indicator
+    if (!activeRoomId) return;
+    void realtimeChannelRef.current?.send({
+      type: "broadcast", event: "typing",
+      payload: { userId: currentUserId, name: currentUserName, isTyping: true },
+    });
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      void realtimeChannelRef.current?.send({
+        type: "broadcast", event: "typing",
+        payload: { userId: currentUserId, name: currentUserName, isTyping: false },
+      });
+    }, 3000);
   };
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
+  // ── Actions ───────────────────────────────────────────────────────────────
   async function openRoom(room: Room) {
     if (isAdmin && spyMode) await fetch(`/api/chat/rooms/${room.id}/spy`, { method: "POST" });
     setUnreadCounts((prev) => ({ ...prev, [room.id]: 0 }));
     setMessages([]);
     setActiveRoomId(room.id);
+    setReplyTo(null);
+    setMenuMsgId(null);
+    setReactionMsgId(null);
     void fetch(`/api/chat/rooms/${room.id}/read`, { method: "POST" });
     setTimeout(() => inputRef.current?.focus(), 100);
   }
@@ -393,43 +451,51 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   async function sendMessage(e?: React.FormEvent) {
     e?.preventDefault();
     if (!input.trim() || !activeRoomId) return;
-    const content = input.trim();
-    const tempId = `temp_${Date.now()}`;
-    const roomId = activeRoomId;
+    const content   = input.trim();
+    const roomId    = activeRoomId;
+    const tempId    = `temp_${Date.now()}`;
+    const replyRef  = replyTo;
 
-    // ── Optimistic: show message instantly with clock icon ──
+    // Stop typing indicator
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    void realtimeChannelRef.current?.send({
+      type: "broadcast", event: "typing",
+      payload: { userId: currentUserId, name: currentUserName, isTyping: false },
+    });
+
     const optimistic: Message = {
       id: tempId, tempId, content, senderId: currentUserId,
       sender: { id: currentUserId, name: currentUserName },
       createdAt: new Date().toISOString(),
       readBy: [], status: "sending",
+      replyToId: replyRef?.id ?? null,
+      replyTo: replyRef ? { id: replyRef.id, content: replyRef.content, isDeleted: !!replyRef.isDeleted, sender: replyRef.sender } : null,
     };
+
     scrollInstantRef.current = false;
+    isAtBottomRef.current    = true;
     setMessages((prev) => [...prev, optimistic]);
     setInput("");
+    setReplyTo(null);
     if (inputRef.current) inputRef.current.style.height = "auto";
 
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, replyToId: replyRef?.id ?? null }),
       });
       if (res.ok) {
         const confirmed: Message = await res.json();
-        // Replace optimistic message with confirmed one
         setMessages((prev) => prev.map((m) => m.tempId === tempId ? confirmed : m));
-        // Broadcast to other room members via Supabase Realtime
         void realtimeChannelRef.current?.send({
           type: "broadcast", event: "new_message", payload: confirmed,
         });
         void loadRooms();
       } else {
-        // Mark as failed
         setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
       }
     } catch {
-      // Network error — mark as failed
       setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
     }
   }
@@ -437,20 +503,44 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   async function saveEdit(msgId: string) {
     if (!editContent.trim() || !activeRoomId) return;
     const newContent = editContent.trim();
-    // Optimistic update
     setMessages((prev) => prev.map((m) =>
       m.id === msgId ? { ...m, content: newContent, editedAt: new Date().toISOString() } : m
     ));
     setEditingId(null);
     await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: newContent }),
     });
-    // Broadcast edit
     void realtimeChannelRef.current?.send({
       type: "broadcast", event: "edit_message", payload: { messageId: msgId, content: newContent },
     });
+  }
+
+  async function reactToMessage(msgId: string, emoji: string) {
+    if (!activeRoomId) return;
+    setReactionMsgId(null);
+    // Optimistic
+    setMessages((prev) => prev.map((m) => {
+      if (m.id !== msgId) return m;
+      const r = { ...(m.reactions ?? {}) } as Record<string, string[]>;
+      const users = r[emoji] ?? [];
+      if (users.includes(currentUserId)) {
+        const next = users.filter((u) => u !== currentUserId);
+        if (next.length === 0) delete r[emoji]; else r[emoji] = next;
+      } else { r[emoji] = [...users, currentUserId]; }
+      return { ...m, reactions: r };
+    }));
+    const res = await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reaction: emoji }),
+    });
+    if (res.ok) {
+      const { reactions } = await res.json();
+      setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, reactions } : m));
+      void realtimeChannelRef.current?.send({
+        type: "broadcast", event: "reaction", payload: { messageId: msgId, reactions },
+      });
+    }
   }
 
   function spawnParticles(msgId: string) {
@@ -458,92 +548,36 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     if (!bubble) return;
     const rect = bubble.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-
-    // Telegram-like palette: purples, pinks, whites, blues
-    const colors = [
-      "#a78bfa", "#c4b5fd", "#7c3aed", "#e879f9",
-      "#f0abfc", "#818cf8", "#60a5fa", "#ffffff",
-      "#ddd6fe", "#fbcfe8", "#6ee7b7",
-    ];
-
-    const TOTAL = 24; // more particles = more impressive
-
+    const cy = rect.top  + rect.height / 2;
+    const colors = ["#a78bfa","#c4b5fd","#7c3aed","#e879f9","#f0abfc","#818cf8","#60a5fa","#ffffff","#ddd6fe","#fbcfe8","#6ee7b7"];
+    const TOTAL = 24;
     for (let i = 0; i < TOTAL; i++) {
-      // Spread angles evenly + slight jitter
       const angle = ((Math.PI * 2) / TOTAL) * i + (Math.random() - 0.5) * 0.5;
-      // Vary distance — close and far particles
-      const dist = 35 + Math.random() * 90;
-      const tx = Math.cos(angle) * dist;
-      const ty = Math.sin(angle) * dist;
-
+      const dist  = 35 + Math.random() * 90;
+      const tx = Math.cos(angle) * dist, ty = Math.sin(angle) * dist;
       const size = 2 + Math.random() * 6;
       const isRound = Math.random() > 0.35;
-      const color = colors[Math.floor(Math.random() * colors.length)];
-      const duration = 380 + Math.random() * 320; // ms
-      const delay = Math.random() * 60; // ms stagger
-
       const el = document.createElement("div");
-      el.style.cssText = `
-        position:fixed;
-        left:${cx - size / 2}px;
-        top:${cy - size / 2}px;
-        width:${size}px;
-        height:${isRound ? size : size * 0.5}px;
-        border-radius:${isRound ? "50%" : "2px"};
-        background:${color};
-        pointer-events:none;
-        z-index:99999;
-        will-change:transform,opacity;
-      `;
+      el.style.cssText = `position:fixed;left:${cx-size/2}px;top:${cy-size/2}px;width:${size}px;height:${isRound?size:size*0.5}px;border-radius:${isRound?"50%":"2px"};background:${colors[Math.floor(Math.random()*colors.length)]};pointer-events:none;z-index:99999;will-change:transform,opacity;`;
       document.body.appendChild(el);
-
-      // Use Web Animations API — reliable cross-browser, no CSS custom props needed
       el.animate(
-        [
-          { transform: "translate(0,0) scale(1)",                     opacity: 1 },
-          { transform: `translate(${tx * 0.4}px,${ty * 0.4}px) scale(1.1)`, opacity: 1,   offset: 0.15 },
-          { transform: `translate(${tx}px,${ty}px) scale(0)`,         opacity: 0 },
-        ],
-        {
-          duration,
-          delay,
-          easing: "cubic-bezier(0.15, 0.8, 0.35, 1)",
-          fill: "forwards",
-        }
+        [{ transform:"translate(0,0) scale(1)",opacity:1 },
+         { transform:`translate(${tx*.4}px,${ty*.4}px) scale(1.1)`,opacity:1,offset:.15 },
+         { transform:`translate(${tx}px,${ty}px) scale(0)`,opacity:0 }],
+        { duration: 380 + Math.random()*320, delay: Math.random()*60, easing:"cubic-bezier(0.15,0.8,0.35,1)", fill:"forwards" }
       ).onfinish = () => el.remove();
     }
-
-    // Extra: 6 slightly bigger "glow" orbs for depth
     for (let i = 0; i < 6; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const dist = 20 + Math.random() * 50;
-      const tx = Math.cos(angle) * dist;
-      const ty = Math.sin(angle) * dist;
+      const dist  = 20 + Math.random() * 50;
+      const tx = Math.cos(angle)*dist, ty = Math.sin(angle)*dist;
       const size = 7 + Math.random() * 8;
-      const color = colors[Math.floor(Math.random() * 4)]; // purples only
       const el = document.createElement("div");
-      el.style.cssText = `
-        position:fixed;
-        left:${cx - size / 2}px;
-        top:${cy - size / 2}px;
-        width:${size}px;
-        height:${size}px;
-        border-radius:50%;
-        background:${color};
-        opacity:0.45;
-        pointer-events:none;
-        z-index:99998;
-        filter:blur(2px);
-        will-change:transform,opacity;
-      `;
+      el.style.cssText = `position:fixed;left:${cx-size/2}px;top:${cy-size/2}px;width:${size}px;height:${size}px;border-radius:50%;background:${colors[Math.floor(Math.random()*4)]};opacity:.45;pointer-events:none;z-index:99998;filter:blur(2px);will-change:transform,opacity;`;
       document.body.appendChild(el);
       el.animate(
-        [
-          { transform: "translate(0,0) scale(1)",              opacity: 0.45 },
-          { transform: `translate(${tx}px,${ty}px) scale(0)`, opacity: 0 },
-        ],
-        { duration: 300 + Math.random() * 200, delay: Math.random() * 40, easing: "ease-out", fill: "forwards" }
+        [{ transform:"translate(0,0) scale(1)",opacity:.45 },{ transform:`translate(${tx}px,${ty}px) scale(0)`,opacity:0 }],
+        { duration: 300+Math.random()*200, delay: Math.random()*40, easing:"ease-out", fill:"forwards" }
       ).onfinish = () => el.remove();
     }
   }
@@ -551,27 +585,17 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   async function deleteMessage(msgId: string, deleteType: "everyone" | "me") {
     if (!activeRoomId) return;
     setMenuMsgId(null);
-
-    // Step 1: spawn particles from bubble position, then start vanish animation
     spawnParticles(msgId);
     setVanishingIds((prev) => new Set([...prev, msgId]));
-
-    // Step 2: after animation completes, apply the actual state change
     setTimeout(() => {
-      if (deleteType === "me") {
-        setMessages((prev) => prev.filter((m) => m.id !== msgId));
-      } else {
-        setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m));
-      }
+      if (deleteType === "me") setMessages((prev) => prev.filter((m) => m.id !== msgId));
+      else setMessages((prev) => prev.map((m) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m));
       setVanishingIds((prev) => { const n = new Set(prev); n.delete(msgId); return n; });
-    }, 420); // matches animation duration
-
+    }, 420);
     await fetch(`/api/chat/rooms/${activeRoomId}/messages/${msgId}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      method: "DELETE", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ deleteType }),
     });
-    // Broadcast delete to other members (only for "everyone" delete)
     if (deleteType === "everyone") {
       void realtimeChannelRef.current?.send({
         type: "broadcast", event: "delete_message", payload: { messageId: msgId },
@@ -579,52 +603,38 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     }
   }
 
-  // Retry a failed message
   async function retryMessage(msg: Message) {
     if (!activeRoomId) return;
     setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "sending" } : m));
     try {
       const res = await fetch(`/api/chat/rooms/${activeRoomId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: msg.content }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: msg.content, replyToId: msg.replyToId ?? null }),
       });
       if (res.ok) {
         const confirmed: Message = await res.json();
         setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? confirmed : m));
-        void realtimeChannelRef.current?.send({
-          type: "broadcast", event: "new_message", payload: confirmed,
-        });
-      } else {
-        setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "failed" } : m));
-      }
-    } catch {
-      setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "failed" } : m));
-    }
+        void realtimeChannelRef.current?.send({ type: "broadcast", event: "new_message", payload: confirmed });
+      } else setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "failed" } : m));
+    } catch { setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "failed" } : m)); }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void sendMessage();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); }
+    if (e.key === "Escape" && replyTo) setReplyTo(null);
   }
 
   async function createChat() {
     if (selectedMembers.length === 0) { toast.error("Select at least one member"); return; }
     const res = await fetch("/api/chat/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: newChatType, name: newChatType === "group" ? groupName : undefined, memberIds: selectedMembers }),
     });
     if (res.ok) {
       const room = await res.json();
       setRooms((prev) => { const e = prev.find((r) => r.id === room.id); return e ? prev.map((r) => r.id === room.id ? room : r) : [room, ...prev]; });
-      setMessages([]);
-      setActiveRoomId(room.id);
-      setShowNewChat(false);
-      setSelectedMembers([]);
-      setGroupName("");
+      setMessages([]); setActiveRoomId(room.id); setShowNewChat(false);
+      setSelectedMembers([]); setGroupName(""); setSidebarSearch("");
     } else toast.error("Failed to create chat");
   }
 
@@ -632,93 +642,101 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     (!roleFilter || e.role === roleFilter) &&
     (!sidebarSearch || e.name.toLowerCase().includes(sidebarSearch.toLowerCase()))
   );
-
   const filteredRooms = rooms.filter((r) =>
     !sidebarSearch || getRoomName(r, currentUserId).toLowerCase().includes(sidebarSearch.toLowerCase())
   );
+  const typingNames = Object.values(typingUsers);
+  const displayedMessages = msgSearch.trim()
+    ? messages.filter((m) => !m.isDeleted && m.content.toLowerCase().includes(msgSearch.toLowerCase()))
+    : messages;
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex overflow-hidden" style={{ height: "calc(100vh - 57px)", background: "#0a0a14" }}>
+    <>
+      {/* Typing dots keyframe — injected once */}
+      <style>{`
+        @keyframes typing-dot { 0%,80%,100%{transform:scale(0.6);opacity:.4} 40%{transform:scale(1);opacity:1} }
+        .msg-vanishing { animation: vanish 0.4s ease-out forwards; }
+        @keyframes vanish { 0%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(0.5)} }
+        .msg-deleted-appear { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+      `}</style>
 
-      {/* ════════════════════════════════════════════════════════════════════
-          SIDEBAR — full width on mobile when no chat open, fixed column on desktop
-      ════════════════════════════════════════════════════════════════════ */}
-      <div className={`flex flex-col flex-shrink-0 ${activeRoomId ? "hidden md:flex" : "flex w-full md:w-auto"}`}
-        style={{ width: undefined, minWidth: 0 }}
-      >
-      <div className="flex flex-col h-full md:w-[300px] w-full" style={{ background: "#0f0f1c", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="flex overflow-hidden" style={{ height: "calc(100vh - 57px)", background: "#0a0a14" }}
+        onClick={() => { setMenuMsgId(null); setReactionMsgId(null); }}>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-3 flex-shrink-0">
-          <div>
-            <h1 className="text-base font-bold text-white tracking-tight">Messages</h1>
-            {isAdmin && (
-              <button onClick={() => setSpyMode((s) => !s)}
-                className="flex items-center gap-1 mt-0.5 text-xs font-medium transition-all"
-                style={{ color: spyMode ? "#f59e0b" : "rgba(255,255,255,0.3)" }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} style={{ width: 11, height: 11 }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-                {spyMode ? "Spy Mode ON" : "Spy Mode"}
-              </button>
-            )}
-          </div>
-          <button onClick={() => setShowNewChat(true)}
-            className="w-9 h-9 rounded-2xl flex items-center justify-center transition-all hover:scale-105"
-            style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} style={{ width: 16, height: 16 }}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-          </button>
-        </div>
+        {/* ══════════════════════════ SIDEBAR ══════════════════════════ */}
+        <div className={`flex-col flex-shrink-0 ${activeRoomId ? "hidden md:flex" : "flex w-full md:w-auto"}`}>
+        <div className="flex flex-col h-full md:w-[300px] w-full"
+          style={{ background: "#0f0f1c", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
 
-        {/* Search */}
-        <div className="px-4 pb-3 flex-shrink-0">
-          <div className="flex items-center gap-2 px-3 rounded-2xl" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={2} style={{ width: 14, height: 14, flexShrink: 0 }}>
-              <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-            </svg>
-            <input
-              value={sidebarSearch}
-              onChange={(e) => setSidebarSearch(e.target.value)}
-              placeholder="Search chats..."
-              className="flex-1 py-2.5 text-xs bg-transparent outline-none text-white placeholder:text-white/30"
-            />
-          </div>
-        </div>
-
-        {/* Room list */}
-        <div className="flex-1 overflow-y-auto pb-2" style={{ scrollbarWidth: "none" }}>
-          {loadingRooms ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div className="w-6 h-6 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-              <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>Loading chats...</span>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 pt-4 pb-3 flex-shrink-0">
+            <div>
+              <h1 className="text-base font-bold text-white tracking-tight">Messages</h1>
+              {isAdmin && (
+                <button onClick={() => setSpyMode((s) => !s)}
+                  className="flex items-center gap-1 mt-0.5 text-xs font-medium transition-all"
+                  style={{ color: spyMode ? "#f59e0b" : "rgba(255,255,255,0.3)" }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} style={{ width: 11, height: 11 }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  {spyMode ? "Spy Mode ON" : "Spy Mode"}
+                </button>
+              )}
             </div>
-          ) : filteredRooms.length === 0 ? (
-            <div className="px-4 py-12 text-center">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(124,58,237,0.1)" }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth={1.5} style={{ width: 24, height: 24 }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
+            <button onClick={() => setShowNewChat(true)}
+              className="w-9 h-9 rounded-2xl flex items-center justify-center transition-all hover:scale-105"
+              style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} style={{ width: 16, height: 16 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="px-4 pb-3 flex-shrink-0">
+            <div className="flex items-center gap-2 px-3 rounded-2xl"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={2} style={{ width: 14, height: 14, flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="8"/><path strokeLinecap="round" d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input value={sidebarSearch} onChange={(e) => setSidebarSearch(e.target.value)}
+                placeholder="Search chats..."
+                className="flex-1 py-2.5 text-xs bg-transparent outline-none text-white placeholder:text-white/30" />
+            </div>
+          </div>
+
+          {/* Room list */}
+          <div className="flex-1 overflow-y-auto pb-2" style={{ scrollbarWidth: "none" }}>
+            {loadingRooms ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="w-6 h-6 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>Loading chats...</span>
               </div>
-              <p className="text-sm font-medium text-white/60">No conversations</p>
-              <p className="text-xs mt-1 text-white/30">Start a new chat</p>
-            </div>
-          ) : (
-            filteredRooms.map((room) => {
-              const lastMsg = room.messages[0];
+            ) : filteredRooms.length === 0 ? (
+              <div className="px-4 py-12 text-center">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3"
+                  style={{ background: "rgba(124,58,237,0.1)" }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth={1.5} style={{ width: 24, height: 24 }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-white/60">No conversations</p>
+                <p className="text-xs mt-1 text-white/30">Start a new chat</p>
+              </div>
+            ) : filteredRooms.map((room) => {
+              const lastMsg  = room.messages[0];
               const isActive = room.id === activeRoomId;
-              const isGroup = room.type === "group";
-              const unread = unreadCounts[room.id] ?? 0;
-              const name = getRoomName(room, currentUserId);
+              const isGroup  = room.type === "group";
+              const unread   = unreadCounts[room.id] ?? 0;
+              const name     = getRoomName(room, currentUserId);
               return (
                 <div key={room.id} className="group/room relative mx-2 mb-0.5">
                   <button onClick={() => openRoom(room)}
                     className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl transition-all text-left"
                     style={{ background: isActive ? "rgba(124,58,237,0.18)" : "transparent" }}>
-                    {/* Avatar */}
                     <div className="relative">
                       {isGroup ? <GroupAvatar size={46} /> : <Avatar name={name} size={46} />}
                       {unread > 0 && !isActive && (
@@ -728,17 +746,16 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                         </span>
                       )}
                     </div>
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1 mb-0.5">
                         <p className={`text-sm truncate ${unread > 0 && !isActive ? "font-bold text-white" : "font-semibold"}`}
-                          style={{ color: isActive ? "white" : unread > 0 ? "white" : "rgba(255,255,255,0.85)" }}>
+                          style={{ color: isActive ? "white" : "rgba(255,255,255,0.85)" }}>
                           {name}
                         </p>
                         {lastMsg && (
                           <span className="text-[11px] flex-shrink-0"
                             style={{ color: unread > 0 && !isActive ? "#22c55e" : "rgba(255,255,255,0.3)" }}>
-                            {formatSidebarTime(lastMsg.createdAt)}
+                            {fmtSidebar(lastMsg.createdAt)}
                           </span>
                         )}
                       </div>
@@ -750,7 +767,6 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                       </p>
                     </div>
                   </button>
-                  {/* Delete/leave on hover */}
                   <button onClick={(e) => deleteRoom(room.id, e)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-xl items-center justify-center transition-all opacity-0 group-hover/room:opacity-100 hidden group-hover/room:flex"
                     style={{ background: "rgba(239,68,68,0.15)", color: "#fca5a5" }}
@@ -761,370 +777,486 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                   </button>
                 </div>
               );
-            })
-          )}
-        </div>
+            })}
+          </div>
 
-        {/* Current user footer */}
-        <div className="px-4 py-3 flex-shrink-0 flex items-center gap-3" style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-          <Avatar name={currentUserName} size={34} />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-white truncate">{currentUserName}</p>
-            <div className="flex items-center gap-1 mt-0.5">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#22c55e" }} />
-              <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>Online</span>
+          {/* Footer */}
+          <div className="px-4 py-3 flex-shrink-0 flex items-center gap-3"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+            <Avatar name={currentUserName} size={34} />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-white truncate">{currentUserName}</p>
+              <div className="flex items-center gap-1 mt-0.5">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#22c55e" }} />
+                <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>Online</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      </div>{/* close inner sidebar div */}
+        </div>
 
-      {/* ════════════════════════════════════════════════════════════════════
-          CHAT AREA — hidden on mobile when no room selected (sidebar shown instead)
-      ════════════════════════════════════════════════════════════════════ */}
-      <div className={`flex-1 flex flex-col overflow-hidden ${!activeRoomId ? "hidden md:flex" : "flex"}`} style={{ background: "#0d0d1a" }}>
+        {/* ══════════════════════════ CHAT AREA ══════════════════════════ */}
+        <div className={`flex-1 flex flex-col overflow-hidden ${!activeRoomId ? "hidden md:flex" : "flex"}`}
+          style={{ background: "#0d0d1a" }}>
 
-        {!activeRoom ? (
-          /* ── Empty state ── */
-          <div className="flex-1 flex items-center justify-center flex-col gap-5">
-            <div className="w-20 h-20 rounded-3xl flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg,rgba(124,58,237,0.15),rgba(79,70,229,0.1))", border: "1px solid rgba(124,58,237,0.2)" }}>
-              <svg viewBox="0 0 24 24" fill="none" style={{ width: 36, height: 36 }}>
-                <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  stroke="#a78bfa" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-white">Your Messages</p>
-              <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>Select a conversation or start a new one</p>
-            </div>
-            <button onClick={() => setShowNewChat(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:scale-105"
-              style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} style={{ width: 16, height: 16 }}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              New Conversation
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* ── Chat Header ── */}
-            {(() => {
-              const otherMember = activeRoom.type === "direct"
-                ? activeRoom.members.find((m) => m.user.id !== currentUserId)
-                : null;
-              const otherLastSeen = otherMember ? (lastSeenMap[otherMember.user.id] ?? otherMember.user.lastSeenAt) : null;
-              const online = otherMember ? isOnline(otherLastSeen) : false;
-              return (
-            <div className="flex items-center gap-3 px-3 md:px-5 py-3.5 flex-shrink-0"
-              style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
-              {/* Back button — mobile only */}
-              <button className="md:hidden flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: "rgba(255,255,255,0.06)" }}
-                onClick={() => setActiveRoomId(null)}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} style={{ width: 16, height: 16 }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          {!activeRoom ? (
+            <div className="flex-1 flex items-center justify-center flex-col gap-5">
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center"
+                style={{ background: "linear-gradient(135deg,rgba(124,58,237,0.15),rgba(79,70,229,0.1))", border: "1px solid rgba(124,58,237,0.2)" }}>
+                <svg viewBox="0 0 24 24" fill="none" style={{ width: 36, height: 36 }}>
+                  <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    stroke="#a78bfa" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-white">Your Messages</p>
+                <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.35)" }}>Select a conversation or start a new one</p>
+              </div>
+              <button onClick={() => setShowNewChat(true)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:scale-105"
+                style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} style={{ width: 16, height: 16 }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                New Conversation
               </button>
-              <div className="relative">
-                {activeRoom.type === "group"
-                  ? <GroupAvatar size={40} />
-                  : <Avatar name={getRoomName(activeRoom, currentUserId)} size={40} />
-                }
-                {activeRoom.type === "direct" && (
-                  <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
-                    style={{
-                      background: online ? "#22c55e" : "rgba(255,255,255,0.25)",
-                      borderColor: "#0d0d1a",
-                    }} />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-white">{getRoomName(activeRoom, currentUserId)}</p>
-                <p className="text-xs mt-0.5 flex items-center gap-1"
-                  style={{ color: online ? "#4ade80" : "rgba(255,255,255,0.35)" }}>
-                  {activeRoom.type === "group"
-                    ? `${activeRoom.members.length} members`
-                    : formatLastSeen(otherLastSeen)
-                  }
-                </p>
-              </div>
-              {isAdmin && spyMode && (
-                <span className="text-xs px-3 py-1 rounded-full font-semibold flex items-center gap-1"
-                  style={{ background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.2)" }}>
-                  👁 Viewing silently
-                </span>
-              )}
             </div>
-              );
-            })()}
-
-            {/* ── Messages ── */}
-            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-4" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}>
-              {loadingMessages && (
-                <div className="flex justify-center py-8">
-                  <div className="w-5 h-5 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-                </div>
-              )}
-              {!loadingMessages && messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-16 gap-3">
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: "rgba(124,58,237,0.08)" }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth={1.5} style={{ width: 28, height: 28 }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          ) : (() => {
+            const otherMember = activeRoom.type === "direct"
+              ? activeRoom.members.find((m) => m.user.id !== currentUserId) : null;
+            const otherLastSeen = otherMember ? (lastSeenMap[otherMember.user.id] ?? otherMember.user.lastSeenAt) : null;
+            const online = isOnline(otherLastSeen);
+            return (
+              <>
+                {/* ── Header ── */}
+                <div className="flex items-center gap-3 px-3 md:px-4 py-3 flex-shrink-0"
+                  style={{ background: "rgba(15,15,28,0.95)", borderBottom: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+                  <button className="md:hidden flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center"
+                    style={{ background: "rgba(255,255,255,0.06)" }}
+                    onClick={() => setActiveRoomId(null)}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} style={{ width: 16, height: 16 }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                     </svg>
+                  </button>
+                  <div className="relative">
+                    {activeRoom.type === "group" ? <GroupAvatar size={40} /> : <Avatar name={getRoomName(activeRoom, currentUserId)} size={40} />}
+                    {activeRoom.type === "direct" && (
+                      <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
+                        style={{ background: online ? "#22c55e" : "rgba(255,255,255,0.2)", borderColor: "#0d0d1a" }} />
+                    )}
                   </div>
-                  <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>No messages yet</p>
-                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>Say hello! 👋</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white leading-tight">{getRoomName(activeRoom, currentUserId)}</p>
+                    <p className="text-xs mt-0.5 flex items-center gap-1.5 leading-none" style={{ color: online ? "#4ade80" : "rgba(255,255,255,0.35)", minHeight: 16 }}>
+                      {typingNames.length > 0 ? (
+                        <><TypingDots /> <span>{typingNames.length === 1 ? `${typingNames[0]} is typing` : "Several people are typing"}</span></>
+                      ) : activeRoom.type === "group"
+                        ? `${activeRoom.members.length} members`
+                        : fmtLastSeen(otherLastSeen)
+                      }
+                    </p>
+                  </div>
+                  {/* Message search toggle */}
+                  <button onClick={() => setShowMsgSearch((s) => !s)}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                    style={{ background: showMsgSearch ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.06)", color: showMsgSearch ? "#c4b5fd" : "rgba(255,255,255,0.4)" }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 15, height: 15 }}>
+                      <circle cx="11" cy="11" r="8"/><path strokeLinecap="round" d="M21 21l-4.35-4.35"/>
+                    </svg>
+                  </button>
+                  {isAdmin && spyMode && (
+                    <span className="text-xs px-3 py-1 rounded-full font-semibold"
+                      style={{ background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.2)" }}>
+                      👁 Viewing silently
+                    </span>
+                  )}
                 </div>
-              )}
 
-              {messages.map((msg, i) => {
-                const isMe = msg.senderId === currentUserId;
-                const prev = messages[i - 1];
-                const next = messages[i + 1];
-                const showDateSep = !prev || !isSameDay(prev.createdAt, msg.createdAt);
-                const showAvatar = !isMe && (!next || next.senderId !== msg.senderId);
-                const showName = !isMe && activeRoom.type === "group" && (!prev || prev.senderId !== msg.senderId);
-                const isRead = msg.readBy?.some((r) => r.userId !== currentUserId) ?? false;
-                const isFailed = msg.status === "failed";
-                const isSending = msg.status === "sending";
-                const isDeleted = !!msg.isDeleted;
-                const isEditing = editingId === msg.id;
-                const showMenu = menuMsgId === msg.id;
-                const isVanishing = vanishingIds.has(msg.id);
-                const msgAgeMs = menuOpenTime - new Date(msg.createdAt).getTime();
-                const canEdit = isMe && !isDeleted && !isSending && msgAgeMs < 15 * 60 * 1000;
-                const canDeleteForAll = (isMe || isAdmin) && !isDeleted && !isSending && (isAdmin || msgAgeMs < 24 * 60 * 60 * 1000);
+                {/* Message search bar */}
+                {showMsgSearch && (
+                  <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0"
+                    style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={2} style={{ width: 14, height: 14, flexShrink: 0 }}>
+                      <circle cx="11" cy="11" r="8"/><path strokeLinecap="round" d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <input autoFocus value={msgSearch} onChange={(e) => setMsgSearch(e.target.value)}
+                      placeholder="Search in conversation..."
+                      className="flex-1 py-1.5 text-sm bg-transparent outline-none text-white placeholder:text-white/30" />
+                    {msgSearch && (
+                      <button onClick={() => setMsgSearch("")} style={{ color: "rgba(255,255,255,0.4)" }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                )}
 
-                return (
-                  <div key={msg.tempId ?? msg.id}
-                    data-msgid={msg.id}
-                    className={isVanishing ? "msg-vanishing" : ""}
-                    onClick={() => setMenuMsgId(null)}>
-                    {/* Date separator */}
-                    {showDateSep && (
-                      <div className="flex items-center gap-3 my-4">
-                        <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.07)" }} />
-                        <span className="text-[11px] font-medium px-3 py-1 rounded-full flex-shrink-0"
-                          style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
-                          {formatDateSeparator(msg.createdAt)}
-                        </span>
-                        <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.07)" }} />
+                {/* ── Messages area ── */}
+                <div className="relative flex-1 overflow-hidden">
+                  <div ref={messagesContainerRef} onScroll={handleScroll}
+                    className="absolute inset-0 overflow-y-auto px-3 md:px-5 py-4"
+                    style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.08) transparent" }}>
+
+                    {loadingMessages && (
+                      <div className="flex justify-center py-10">
+                        <div className="w-5 h-5 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+                      </div>
+                    )}
+                    {!loadingMessages && displayedMessages.length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-20 gap-3">
+                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: "rgba(124,58,237,0.08)" }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth={1.5} style={{ width: 28, height: 28 }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                        </div>
+                        <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>
+                          {msgSearch ? "No messages match your search" : "No messages yet"}
+                        </p>
+                        {!msgSearch && <p className="text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>Say hello! 👋</p>}
                       </div>
                     )}
 
-                    <div className={`flex items-end gap-2 mb-1 ${isMe ? "justify-end" : "justify-start"}`}>
-                      {!isMe && (
-                        <div className="flex-shrink-0" style={{ width: 32 }}>
-                          {showAvatar && <Avatar name={msg.sender.name} size={30} />}
-                        </div>
-                      )}
+                    {displayedMessages.map((msg, i) => {
+                      const isMe   = msg.senderId === currentUserId;
+                      const prev   = displayedMessages[i - 1];
+                      const next   = displayedMessages[i + 1];
+                      const showDateSep  = !prev || !sameDay(prev.createdAt, msg.createdAt);
+                      const sameSenderPrev = prev && prev.senderId === msg.senderId && sameDay(prev.createdAt, msg.createdAt) && !prev.isDeleted;
+                      const sameSenderNext = next && next.senderId === msg.senderId && sameDay(next.createdAt, msg.createdAt) && !next.isDeleted;
+                      const showAvatar    = !isMe && !sameSenderNext;
+                      const showName      = !isMe && activeRoom.type === "group" && !sameSenderPrev;
+                      const isRead        = msg.readBy?.some((r) => r.userId !== currentUserId) ?? false;
+                      const isFailed      = msg.status === "failed";
+                      const isSending     = msg.status === "sending";
+                      const isDeleted     = !!msg.isDeleted;
+                      const isEditing     = editingId === msg.id;
+                      const showMenu      = menuMsgId === msg.id;
+                      const isVanishing   = vanishingIds.has(msg.id);
+                      const msgAgeMs      = menuOpenTime - new Date(msg.createdAt).getTime();
+                      const canEdit       = isMe && !isDeleted && !isSending && msgAgeMs < 15 * 60 * 1000;
+                      const canDeleteAll  = (isMe || isAdmin) && !isDeleted && !isSending && (isAdmin || msgAgeMs < 24 * 60 * 60 * 1000);
+                      const reactions     = msg.reactions ?? {};
+                      const hasReactions  = Object.keys(reactions).some((k) => reactions[k].length > 0);
+                      const marginBottom  = sameSenderNext ? "mb-0.5" : "mb-3";
 
-                      <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[65%]`}>
-                        {showName && (
-                          <p className="text-[11px] font-semibold mb-1 px-1" style={{ color: getAvatarColor(msg.sender.name)[0] }}>
-                            {msg.sender.name}
-                          </p>
-                        )}
+                      return (
+                        <div key={msg.tempId ?? msg.id} data-msgid={msg.id}
+                          className={`${isVanishing ? "msg-vanishing" : ""} ${marginBottom}`}
+                          onClick={() => { setMenuMsgId(null); setReactionMsgId(null); }}>
 
-                        {/* Bubble wrapper with hover menu trigger */}
-                        <div className="relative group/msg">
-
-                          {/* ── 3-dot menu button (hover) ── */}
-                          {!isDeleted && !isSending && !isEditing && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); if (!showMenu) setMenuOpenTime(Date.now()); setMenuMsgId(showMenu ? null : msg.id); }}
-                              className={`absolute top-1 z-10 w-6 h-6 rounded-full items-center justify-center transition-all
-                                opacity-0 group-hover/msg:opacity-100
-                                ${isMe ? "-left-8" : "-right-8"}`}
-                              style={{ background: "rgba(255,255,255,0.1)", display: "flex" }}>
-                              <svg viewBox="0 0 24 24" fill="white" style={{ width: 12, height: 12 }}>
-                                <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
-                              </svg>
-                            </button>
-                          )}
-
-                          {/* ── Context menu ── */}
-                          {showMenu && (
-                            <div
-                              className={`absolute top-0 z-20 rounded-2xl overflow-hidden flex flex-col ${isMe ? "right-full mr-2" : "left-full ml-2"}`}
-                              style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", minWidth: 170 }}
-                              onClick={(e) => e.stopPropagation()}>
-
-                              {/* Edit — only own msg within 15 min */}
-                              {canEdit && (
-                                <button
-                                  onClick={() => { setEditingId(msg.id); setEditContent(msg.content); setMenuMsgId(null); }}
-                                  className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium text-white hover:bg-white/10 transition-all text-left">
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                  </svg>
-                                  Edit
-                                  <span className="ml-auto text-[10px] opacity-40">15 min</span>
-                                </button>
-                              )}
-
-                              {/* Delete for me — always */}
-                              {!isDeleted && !isSending && (
-                                <button
-                                  onClick={() => void deleteMessage(msg.id, "me")}
-                                  className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium hover:bg-white/10 transition-all text-left"
-                                  style={{ color: "#fbbf24" }}>
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
-                                  </svg>
-                                  Delete for Me
-                                </button>
-                              )}
-
-                              {/* Delete for everyone — sender/admin + time limit */}
-                              {canDeleteForAll && (
-                                <button
-                                  onClick={() => void deleteMessage(msg.id, "everyone")}
-                                  className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium hover:bg-white/10 transition-all text-left border-t"
-                                  style={{ color: "#f87171", borderColor: "rgba(255,255,255,0.07)" }}>
-                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                  </svg>
-                                  Delete for Everyone
-                                  {!isAdmin && <span className="ml-auto text-[10px] opacity-40">24h</span>}
-                                </button>
-                              )}
-                            </div>
-                          )}
-
-                          {/* ── Bubble ── */}
-                          {isDeleted ? (
-                            /* Deleted message */
-                            <div className="msg-deleted-appear flex items-center gap-2 px-3.5 py-2.5 rounded-2xl"
-                              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                              <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.8} style={{ width: 14, height: 14 }}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-                              </svg>
-                              <span className="text-xs italic" style={{ color: "rgba(255,255,255,0.3)" }}>
-                                {isMe ? "You deleted this message" : "This message was deleted"}
+                          {/* Date separator */}
+                          {showDateSep && (
+                            <div className="flex items-center gap-3 my-5">
+                              <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.07)" }} />
+                              <span className="text-[11px] font-medium px-3 py-1 rounded-full flex-shrink-0"
+                                style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }}>
+                                {fmtDateSep(msg.createdAt)}
                               </span>
-                            </div>
-                          ) : isEditing ? (
-                            /* Edit mode */
-                            <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(124,58,237,0.2)", border: "1px solid rgba(124,58,237,0.4)", minWidth: 200 }}>
-                              <textarea
-                                autoFocus
-                                value={editContent}
-                                onChange={(e) => setEditContent(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void saveEdit(msg.id); }
-                                  if (e.key === "Escape") setEditingId(null);
-                                }}
-                                className="w-full bg-transparent text-sm text-white outline-none resize-none px-3.5 pt-2.5 pb-1"
-                                style={{ minWidth: 200, maxWidth: 320 }}
-                                rows={2}
-                              />
-                              <div className="flex items-center justify-end gap-2 px-3 pb-2">
-                                <button onClick={() => setEditingId(null)}
-                                  className="text-[10px] px-2.5 py-1 rounded-full" style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}>
-                                  Cancel
-                                </button>
-                                <button onClick={() => void saveEdit(msg.id)}
-                                  className="text-[10px] px-2.5 py-1 rounded-full font-semibold text-white" style={{ background: "#7c3aed" }}>
-                                  Save
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            /* Normal bubble */
-                            <div className="msg-bubble px-3.5 py-2.5 rounded-2xl"
-                              style={{
-                                background: isFailed ? "rgba(239,68,68,0.15)" : isMe ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.07)",
-                                borderBottomRightRadius: isMe ? 4 : undefined,
-                                borderBottomLeftRadius: !isMe ? 4 : undefined,
-                                boxShadow: isMe && !isFailed ? "0 2px 12px rgba(124,58,237,0.3)" : "none",
-                                opacity: isSending ? 0.75 : 1,
-                                border: isFailed ? "1px solid rgba(239,68,68,0.3)" : "none",
-                              }}>
-                              <p className="text-sm text-white leading-relaxed" style={{ wordBreak: "break-word" }}>
-                                {msg.content}
-                              </p>
-                              {/* Time + status */}
-                              <div className={`flex items-center gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
-                                {msg.editedAt && (
-                                  <span className="text-[10px] italic" style={{ color: "rgba(255,255,255,0.35)" }}>edited</span>
-                                )}
-                                <span className="text-[10px]" style={{ color: isMe ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.3)" }}>
-                                  {formatTime(msg.createdAt)}
-                                </span>
-                                {isMe && <MessageStatus status={msg.status} isRead={isRead} />}
-                              </div>
+                              <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.07)" }} />
                             </div>
                           )}
+
+                          <div className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}>
+                            {/* Avatar slot for others */}
+                            {!isMe && (
+                              <div className="flex-shrink-0" style={{ width: 32 }}>
+                                {showAvatar ? <Avatar name={msg.sender.name} size={30} /> : null}
+                              </div>
+                            )}
+
+                            <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[72%] md:max-w-[60%]`}>
+                              {/* Sender name (group) */}
+                              {showName && (
+                                <p className="text-[11px] font-semibold mb-1 px-1"
+                                  style={{ color: getAvatarColors(msg.sender.name)[0] }}>
+                                  {msg.sender.name}
+                                </p>
+                              )}
+
+                              <div className="relative group/msg">
+                                {/* ── Action buttons on hover ── */}
+                                {!isDeleted && !isSending && !isEditing && (
+                                  <div className={`absolute top-1 flex items-center gap-1 z-10 opacity-0 group-hover/msg:opacity-100 transition-opacity ${isMe ? "-left-20" : "-right-20"}`}>
+                                    {/* Reply */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setReplyTo(msg); setTimeout(() => inputRef.current?.focus(), 50); }}
+                                      className="w-7 h-7 rounded-full flex items-center justify-center"
+                                      style={{ background: "rgba(255,255,255,0.12)" }} title="Reply">
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} style={{ width: 13, height: 13 }}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h13a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4"/>
+                                      </svg>
+                                    </button>
+                                    {/* React */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setReactionMsgId(reactionMsgId === msg.id ? null : msg.id); }}
+                                      className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
+                                      style={{ background: "rgba(255,255,255,0.12)" }} title="React">
+                                      😊
+                                    </button>
+                                    {/* 3-dot menu */}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); if (!showMenu) setMenuOpenTime(Date.now()); setMenuMsgId(showMenu ? null : msg.id); }}
+                                      className="w-7 h-7 rounded-full flex items-center justify-center"
+                                      style={{ background: "rgba(255,255,255,0.12)" }} title="More">
+                                      <svg viewBox="0 0 24 24" fill="white" style={{ width: 12, height: 12 }}>
+                                        <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+                                      </svg>
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* ── Emoji reaction picker ── */}
+                                {reactionMsgId === msg.id && (
+                                  <div
+                                    className={`absolute -top-12 z-30 flex items-center gap-1 p-2 rounded-2xl ${isMe ? "right-0" : "left-0"}`}
+                                    style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}
+                                    onClick={(e) => e.stopPropagation()}>
+                                    {QUICK_EMOJIS.map((emoji) => {
+                                      const myReact = reactions[emoji]?.includes(currentUserId);
+                                      return (
+                                        <button key={emoji} onClick={() => void reactToMessage(msg.id, emoji)}
+                                          className="text-xl rounded-xl w-9 h-9 flex items-center justify-center transition-all hover:scale-125"
+                                          style={{ background: myReact ? "rgba(124,58,237,0.3)" : "transparent" }}>
+                                          {emoji}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+
+                                {/* ── Context menu ── */}
+                                {showMenu && (
+                                  <div
+                                    className={`absolute top-0 z-20 rounded-2xl overflow-hidden flex flex-col ${isMe ? "right-full mr-2" : "left-full ml-2"}`}
+                                    style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 8px 32px rgba(0,0,0,0.5)", minWidth: 175 }}
+                                    onClick={(e) => e.stopPropagation()}>
+                                    {/* Reply */}
+                                    <button onClick={() => { setReplyTo(msg); setMenuMsgId(null); setTimeout(() => inputRef.current?.focus(), 50); }}
+                                      className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium text-white hover:bg-white/10 transition-all text-left">
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h13a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4"/>
+                                      </svg>
+                                      Reply
+                                    </button>
+                                    {canEdit && (
+                                      <button onClick={() => { setEditingId(msg.id); setEditContent(msg.content); setMenuMsgId(null); }}
+                                        className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium text-white hover:bg-white/10 transition-all text-left">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                        </svg>
+                                        Edit <span className="ml-auto text-[10px] opacity-40">15 min</span>
+                                      </button>
+                                    )}
+                                    {!isDeleted && !isSending && (
+                                      <button onClick={() => void deleteMessage(msg.id, "me")}
+                                        className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium hover:bg-white/10 transition-all text-left"
+                                        style={{ color: "#fbbf24" }}>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                                        </svg>
+                                        Delete for Me
+                                      </button>
+                                    )}
+                                    {canDeleteAll && (
+                                      <button onClick={() => void deleteMessage(msg.id, "everyone")}
+                                        className="flex items-center gap-2.5 px-4 py-3 text-xs font-medium hover:bg-white/10 transition-all text-left border-t"
+                                        style={{ color: "#f87171", borderColor: "rgba(255,255,255,0.07)" }}>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 14, height: 14 }}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                        </svg>
+                                        Delete for Everyone {!isAdmin && <span className="ml-auto text-[10px] opacity-40">24h</span>}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* ── Bubble ── */}
+                                {isDeleted ? (
+                                  <div className="msg-deleted-appear flex items-center gap-2 px-3.5 py-2 rounded-2xl"
+                                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.8} style={{ width: 13, height: 13 }}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                                    </svg>
+                                    <span className="text-xs italic" style={{ color: "rgba(255,255,255,0.3)" }}>
+                                      {isMe ? "You deleted this message" : "This message was deleted"}
+                                    </span>
+                                  </div>
+                                ) : isEditing ? (
+                                  <div className="rounded-2xl overflow-hidden"
+                                    style={{ background: "rgba(124,58,237,0.2)", border: "1px solid rgba(124,58,237,0.4)", minWidth: 200 }}>
+                                    <textarea autoFocus value={editContent}
+                                      onChange={(e) => setEditContent(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void saveEdit(msg.id); }
+                                        if (e.key === "Escape") setEditingId(null);
+                                      }}
+                                      className="w-full bg-transparent text-sm text-white outline-none resize-none px-3.5 pt-2.5 pb-1"
+                                      style={{ minWidth: 200, maxWidth: 320 }} rows={2} />
+                                    <div className="flex items-center justify-end gap-2 px-3 pb-2">
+                                      <button onClick={() => setEditingId(null)}
+                                        className="text-[10px] px-2.5 py-1 rounded-full"
+                                        style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}>Cancel</button>
+                                      <button onClick={() => void saveEdit(msg.id)}
+                                        className="text-[10px] px-2.5 py-1 rounded-full font-semibold text-white"
+                                        style={{ background: "#7c3aed" }}>Save</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="msg-bubble"
+                                    style={{
+                                      background: isFailed ? "rgba(239,68,68,0.15)" : isMe ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.08)",
+                                      borderRadius: 18,
+                                      borderBottomRightRadius: isMe && !sameSenderNext ? 4 : 18,
+                                      borderBottomLeftRadius: !isMe && !sameSenderNext ? 4 : 18,
+                                      boxShadow: isMe && !isFailed ? "0 2px 12px rgba(124,58,237,0.25)" : "none",
+                                      opacity: isSending ? 0.75 : 1,
+                                      border: isFailed ? "1px solid rgba(239,68,68,0.3)" : "none",
+                                      padding: "8px 13px",
+                                    }}>
+                                    {/* Quoted reply */}
+                                    {msg.replyTo && (
+                                      <div className="mb-2 px-2.5 py-1.5 rounded-xl text-xs"
+                                        style={{ background: isMe ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.08)", borderLeft: `3px solid ${getAvatarColors(msg.replyTo.sender.name)[0]}` }}>
+                                        <p className="font-semibold mb-0.5" style={{ color: getAvatarColors(msg.replyTo.sender.name)[0] }}>
+                                          {msg.replyTo.sender.name}
+                                        </p>
+                                        <p className="opacity-70 truncate" style={{ color: "white" }}>
+                                          {msg.replyTo.isDeleted ? "This message was deleted" : msg.replyTo.content}
+                                        </p>
+                                      </div>
+                                    )}
+                                    <p className="text-sm text-white leading-relaxed" style={{ wordBreak: "break-word" }}>
+                                      {msg.content}
+                                    </p>
+                                    <div className={`flex items-center gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                                      {msg.editedAt && <span className="text-[10px] italic" style={{ color: "rgba(255,255,255,0.4)" }}>edited</span>}
+                                      <span className="text-[10px]" style={{ color: isMe ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)" }}>
+                                        {fmt(msg.createdAt)}
+                                      </span>
+                                      {isMe && <MsgStatus status={msg.status} isRead={isRead} />}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Emoji reaction pills */}
+                              {hasReactions && !isDeleted && (
+                                <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
+                                  {QUICK_EMOJIS.filter((e) => (reactions[e]?.length ?? 0) > 0).map((emoji) => {
+                                    const users   = reactions[emoji] ?? [];
+                                    const isMine  = users.includes(currentUserId);
+                                    return (
+                                      <button key={emoji}
+                                        onClick={(e) => { e.stopPropagation(); void reactToMessage(msg.id, emoji); }}
+                                        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all hover:scale-105"
+                                        style={{
+                                          background: isMine ? "rgba(124,58,237,0.35)" : "rgba(255,255,255,0.1)",
+                                          border: isMine ? "1px solid rgba(124,58,237,0.5)" : "1px solid rgba(255,255,255,0.12)",
+                                        }}>
+                                        <span>{emoji}</span>
+                                        <span className="font-semibold" style={{ color: isMine ? "#c4b5fd" : "rgba(255,255,255,0.6)" }}>
+                                          {users.length}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Failed: retry */}
+                              {isFailed && (
+                                <button onClick={() => void retryMessage(msg)}
+                                  className="text-[10px] mt-1 px-2 py-0.5 rounded-full"
+                                  style={{ color: "#f87171", background: "rgba(239,68,68,0.1)" }}>
+                                  ↺ Tap to retry
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </div>
+                      );
+                    })}
 
-                        {/* Failed: tap to retry */}
-                        {isFailed && (
-                          <button onClick={() => void retryMessage(msg)}
-                            className="text-[10px] mt-1 px-2 py-0.5 rounded-full"
-                            style={{ color: "#f87171", background: "rgba(239,68,68,0.1)" }}>
-                            ↺ Tap to retry
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                    <div style={{ height: 4 }} />
                   </div>
-                );
-              })}
-              <div ref={messagesEndRef} />
-            </div>
 
-            {/* ── Input ── */}
-            <div className="flex-shrink-0 px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="flex items-end gap-3">
-                <div className="flex-1 flex items-end gap-2 px-4 py-2.5 rounded-3xl"
-                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  <textarea
-                    ref={inputRef}
-                    value={input}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Write a message..."
-                    rows={1}
-                    disabled={sending}
-                    className="flex-1 bg-transparent text-sm text-white outline-none resize-none"
-                    style={{ color: "white", maxHeight: 120, scrollbarWidth: "none", lineHeight: "1.5" }}
-                  />
+                  {/* Scroll-to-bottom button */}
+                  {showScrollBtn && (
+                    <button onClick={scrollToBottom}
+                      className="absolute bottom-4 right-4 w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-110 z-20"
+                      style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", boxShadow: "0 4px 20px rgba(124,58,237,0.5)" }}>
+                      {newMsgCount > 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white px-1"
+                          style={{ background: "#22c55e" }}>
+                          {newMsgCount > 99 ? "99+" : newMsgCount}
+                        </span>
+                      )}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} style={{ width: 18, height: 18 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
-                <button onClick={() => void sendMessage()}
-                  disabled={!input.trim() || sending}
-                  className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 disabled:opacity-40 disabled:scale-100"
-                  style={{ background: input.trim() ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.08)" }}>
-                  {sending
-                    ? <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                    : (
+
+                {/* ── Input area ── */}
+                <div className="flex-shrink-0" style={{ background: "rgba(15,15,28,0.95)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  {/* Reply preview */}
+                  {replyTo && (
+                    <div className="flex items-center gap-3 px-4 pt-3 pb-1">
+                      <div className="flex-1 px-3 py-2 rounded-xl text-xs"
+                        style={{ background: "rgba(124,58,237,0.12)", borderLeft: `3px solid ${getAvatarColors(replyTo.sender.name)[0]}` }}>
+                        <p className="font-semibold mb-0.5" style={{ color: getAvatarColors(replyTo.sender.name)[0] }}>
+                          {replyTo.sender.id === currentUserId ? "You" : replyTo.sender.name}
+                        </p>
+                        <p className="text-white/60 truncate">{replyTo.content}</p>
+                      </div>
+                      <button onClick={() => setReplyTo(null)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center"
+                        style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} style={{ width: 12, height: 12 }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex items-end gap-3 px-4 py-3">
+                    <div className="flex-1 flex items-end gap-2 px-4 py-2.5 rounded-3xl"
+                      style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }}>
+                      <textarea ref={inputRef} value={input}
+                        onChange={handleInputChange} onKeyDown={handleKeyDown}
+                        placeholder={replyTo ? "Reply..." : "Write a message..."}
+                        rows={1}
+                        className="flex-1 bg-transparent text-sm text-white outline-none resize-none"
+                        style={{ maxHeight: 120, scrollbarWidth: "none", lineHeight: "1.5" }} />
+                    </div>
+                    <button onClick={() => void sendMessage()}
+                      disabled={!input.trim()}
+                      className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 disabled:opacity-40 disabled:scale-100"
+                      style={{ background: input.trim() ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.08)" }}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} style={{ width: 18, height: 18, marginLeft: 2 }}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
                       </svg>
-                    )
-                  }
-                </button>
-              </div>
-              <p className="text-[10px] mt-1.5 px-1" style={{ color: "rgba(255,255,255,0.2)" }}>
-                Enter to send · Shift+Enter for new line
-              </p>
-            </div>
-          </>
-        )}
+                    </button>
+                  </div>
+                  <p className="text-[10px] pb-2 px-5" style={{ color: "rgba(255,255,255,0.18)" }}>
+                    Enter to send · Shift+Enter for new line
+                  </p>
+                </div>
+              </>
+            );
+          })()}
+        </div>
       </div>
 
-      {/* ════════════════════════════════════════════════════════════════════
-          NEW CHAT MODAL
-      ════════════════════════════════════════════════════════════════════ */}
+      {/* ══════════════════════════ NEW CHAT MODAL ══════════════════════════ */}
       {showNewChat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(12px)" }}>
           <div className="w-full max-w-md flex flex-col rounded-3xl overflow-hidden max-h-[88vh]"
             style={{ background: "#0f0f1c", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 32px 80px rgba(0,0,0,0.6)" }}>
 
-            {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-5 flex-shrink-0"
               style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <div>
@@ -1141,21 +1273,16 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {/* Type toggle */}
               <div className="flex gap-2 p-1 rounded-2xl" style={{ background: "rgba(255,255,255,0.04)" }}>
                 {(["direct", "group"] as const).map((t) => (
                   <button key={t} onClick={() => { setNewChatType(t); setSelectedMembers([]); }}
                     className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
-                    style={{
-                      background: newChatType === t ? "rgba(124,58,237,0.3)" : "transparent",
-                      color: newChatType === t ? "#c4b5fd" : "rgba(255,255,255,0.4)",
-                    }}>
+                    style={{ background: newChatType === t ? "rgba(124,58,237,0.3)" : "transparent", color: newChatType === t ? "#c4b5fd" : "rgba(255,255,255,0.4)" }}>
                     {t === "direct" ? "💬 Direct Message" : "👥 Group Chat"}
                   </button>
                 ))}
               </div>
 
-              {/* Group name */}
               {newChatType === "group" && (
                 <input value={groupName} onChange={(e) => setGroupName(e.target.value)}
                   placeholder="Group name..."
@@ -1163,7 +1290,6 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                   style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }} />
               )}
 
-              {/* Role filter */}
               <div className="flex gap-2 flex-wrap">
                 {["", "admin", "manager", "employee"].map((r) => (
                   <button key={r} onClick={() => setRoleFilter(r)}
@@ -1178,17 +1304,16 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                 ))}
               </div>
 
-              {/* Search */}
-              <div className="flex items-center gap-2 px-3 rounded-2xl" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div className="flex items-center gap-2 px-3 rounded-2xl"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={2} style={{ width: 14, height: 14 }}>
-                  <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+                  <circle cx="11" cy="11" r="8"/><path strokeLinecap="round" d="M21 21l-4.35-4.35"/>
                 </svg>
                 <input value={sidebarSearch} onChange={(e) => setSidebarSearch(e.target.value)}
                   placeholder="Search people..."
                   className="flex-1 py-2.5 text-xs bg-transparent outline-none text-white placeholder:text-white/30" />
               </div>
 
-              {/* People list */}
               <div className="space-y-1 max-h-60 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
                 {filteredEmployees.map((emp) => {
                   const isSelected = selectedMembers.includes(emp.id);
@@ -1199,10 +1324,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                         else setSelectedMembers((prev) => prev.includes(emp.id) ? prev.filter((id) => id !== emp.id) : [...prev, emp.id]);
                       }}
                       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl transition-all"
-                      style={{
-                        background: isSelected ? "rgba(124,58,237,0.15)" : "rgba(255,255,255,0.03)",
-                        border: isSelected ? "1px solid rgba(124,58,237,0.3)" : "1px solid transparent",
-                      }}>
+                      style={{ background: isSelected ? "rgba(124,58,237,0.15)" : "rgba(255,255,255,0.03)", border: isSelected ? "1px solid rgba(124,58,237,0.3)" : "1px solid transparent" }}>
                       <Avatar name={emp.name} size={36} />
                       <div className="flex-1 text-left min-w-0">
                         <p className="text-sm font-medium text-white truncate">{emp.name}</p>
@@ -1230,8 +1352,8 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
               )}
             </div>
 
-            {/* Footer */}
-            <div className="flex gap-3 px-6 py-4 flex-shrink-0" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex gap-3 px-6 py-4 flex-shrink-0"
+              style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
               <button onClick={() => { setShowNewChat(false); setSelectedMembers([]); setSidebarSearch(""); }}
                 className="flex-1 py-2.5 rounded-2xl text-sm font-semibold transition-all"
                 style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
@@ -1240,12 +1362,12 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
               <button onClick={createChat} disabled={selectedMembers.length === 0}
                 className="flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-40"
                 style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
-                {newChatType === "direct" ? "Open Chat" : `Create Group`}
+                {newChatType === "direct" ? "Open Chat" : "Create Group"}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

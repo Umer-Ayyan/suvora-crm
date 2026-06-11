@@ -5,13 +5,12 @@ import { getSessionUserId } from "@/lib/get-session-user-id";
 import { broadcastEdit, broadcastDelete } from "@/lib/chat-broadcaster";
 import { NextRequest, NextResponse } from "next/server";
 
-// ── Time limits ───────────────────────────────────────────────────────────────
-const EDIT_LIMIT_MS = 15 * 60 * 1000;          // 15 minutes
-const DELETE_FOR_ALL_LIMIT_MS = 24 * 60 * 60 * 1000; // 24 hours
+const EDIT_LIMIT_MS           = 15 * 60 * 1000;
+const DELETE_FOR_ALL_LIMIT_MS = 24 * 60 * 60 * 1000;
 
 type Params = { params: Promise<{ id: string; msgId: string }> };
 
-// ── PATCH — edit message ──────────────────────────────────────────────────────
+// ── PATCH — edit message OR toggle reaction ───────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,7 +18,35 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: roomId, msgId } = await params;
-  const { content } = await req.json();
+  const body = await req.json();
+
+  // ── React: { reaction: "👍" } ──────────────────────────────────────────────
+  if (body.reaction) {
+    const emoji = body.reaction as string;
+    const msg = await prisma.chatMessage.findUnique({ where: { id: msgId }, select: { reactions: true, roomId: true } });
+    if (!msg || msg.roomId !== roomId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const reactions = (msg.reactions ?? {}) as Record<string, string[]>;
+    const users = reactions[emoji] ?? [];
+    if (users.includes(userId)) {
+      // Toggle off
+      const next = users.filter((u) => u !== userId);
+      if (next.length === 0) delete reactions[emoji];
+      else reactions[emoji] = next;
+    } else {
+      reactions[emoji] = [...users, userId];
+    }
+
+    const updated = await prisma.chatMessage.update({
+      where: { id: msgId },
+      data: { reactions },
+      select: { id: true, reactions: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  // ── Edit content ────────────────────────────────────────────────────────────
+  const { content } = body;
   if (!content?.trim()) return NextResponse.json({ error: "Empty content" }, { status: 400 });
 
   const msg = await prisma.chatMessage.findUnique({ where: { id: msgId } });
@@ -27,9 +54,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (msg.senderId !== userId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const age = Date.now() - new Date(msg.createdAt).getTime();
-  if (age > EDIT_LIMIT_MS) {
-    return NextResponse.json({ error: "Edit window expired (15 min)" }, { status: 403 });
-  }
+  if (age > EDIT_LIMIT_MS) return NextResponse.json({ error: "Edit window expired (15 min)" }, { status: 403 });
 
   const updated = await prisma.chatMessage.update({
     where: { id: msgId },
@@ -58,7 +83,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const msg = await prisma.chatMessage.findUnique({ where: { id: msgId } });
   if (!msg || msg.roomId !== roomId) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // ── Delete for me (always allowed) ──
   if (deleteType === "me") {
     await prisma.chatMessageHide.upsert({
       where: { messageId_userId: { messageId: msgId, userId } },
@@ -68,19 +92,13 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return NextResponse.json({ deletedForMe: true });
   }
 
-  // ── Delete for everyone (only sender/admin + time limit) ──
-  if (msg.senderId !== userId && !isAdmin) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (msg.senderId !== userId && !isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const age = Date.now() - new Date(msg.createdAt).getTime();
   if (age > DELETE_FOR_ALL_LIMIT_MS && !isAdmin) {
     return NextResponse.json({ error: "Delete window expired (24 hours)" }, { status: 403 });
   }
 
-  await prisma.chatMessage.update({
-    where: { id: msgId },
-    data: { isDeleted: true, content: "" },
-  });
+  await prisma.chatMessage.update({ where: { id: msgId }, data: { isDeleted: true, content: "" } });
 
   const members = await prisma.chatRoomMember.findMany({ where: { roomId }, select: { userId: true } });
   broadcastDelete(roomId, msgId, members.map((m) => m.userId));
