@@ -49,6 +49,10 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [spyMode, setSpyMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
+  // Always-current ref so SSE callbacks never have stale closure
+  const activeRoomIdRef = useRef<string | null>(null);
+  // Controls scroll behaviour: "instant" on load, "smooth" on new message
+  const scrollBehaviourRef = useRef<ScrollBehavior>("instant");
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
 
@@ -65,60 +69,128 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
   useEffect(() => { void loadRooms(); }, [loadRooms]);
 
-  // Load messages + poll
+  // Background poll: keep sidebar room list fresh every 10s (fallback)
+  useEffect(() => {
+    const timer = setInterval(() => { void loadRooms(); }, 10000);
+    return () => clearInterval(timer);
+  }, [loadRooms]);
+
+  // ── Global user SSE: get notified of messages in ALL rooms ────────────────
+  useEffect(() => {
+    function connectGlobal() {
+      const es = new EventSource("/api/chat/stream");
+
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data) as { __roomId: string } & Message;
+          const { __roomId: roomId, ...msg } = data;
+
+          // Always refresh sidebar so last-message preview updates
+          void loadRooms();
+
+          // If this message is for the currently active room, append it
+          if (activeRoomIdRef.current === roomId) {
+            scrollBehaviourRef.current = "smooth";
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === msg.id)) return prev;
+              return [...prev, msg as Message];
+            });
+          }
+        } catch { /* ignore */ }
+      };
+
+      es.onerror = () => {
+        es.close();
+        setTimeout(connectGlobal, 3000);
+      };
+
+      return es;
+    }
+
+    const es = connectGlobal();
+    return () => es.close();
+  }, [loadRooms]);
+
+  // Load messages — always scroll instantly (full refresh, not a new incoming msg)
   const loadMessages = useCallback(async (roomId: string) => {
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`);
-      if (res.ok) setMessages(await res.json());
+      if (res.ok) {
+        scrollBehaviourRef.current = "instant";
+        setMessages(await res.json());
+      }
     } catch { /* silent */ }
   }, []);
 
+  // Keep ref in sync with state so SSE callbacks never have stale roomId
+  useEffect(() => {
+    activeRoomIdRef.current = activeRoomId;
+  }, [activeRoomId]);
+
+  // SSE subscription — recreate whenever active room changes
   useEffect(() => {
     if (!activeRoomId) return;
 
     // Initial load
     void loadMessages(activeRoomId);
 
-    // SSE for real-time new messages
-    if (esRef.current) esRef.current.close();
-    const es = new EventSource(`/api/chat/rooms/${activeRoomId}/stream`);
-    esRef.current = es;
+    // Close any previous SSE connection
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
 
-    es.onmessage = (e) => {
-      try {
-        const msg: Message = JSON.parse(e.data);
-        setMessages((prev) => {
-          // Avoid duplicates
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
-        // Refresh room list for last-message preview
-        void loadRooms();
-      } catch { /* ignore malformed */ }
-    };
+    function connectSSE(roomId: string) {
+      const es = new EventSource(`/api/chat/rooms/${roomId}/stream`);
+      esRef.current = es;
 
-    es.onerror = () => {
-      es.close();
-      // Reload messages on reconnect then reconnect SSE after 2s
-      void loadMessages(activeRoomId);
-      setTimeout(() => {
-        if (!activeRoomId) return;
-        const newEs = new EventSource(`/api/chat/rooms/${activeRoomId}/stream`);
-        esRef.current = newEs;
-        newEs.onmessage = es.onmessage;
-        newEs.onerror   = es.onerror;
-      }, 2000);
-    };
+      es.onmessage = (e) => {
+        try {
+          const msg: Message = JSON.parse(e.data);
+          // Only append if still in the same room
+          if (activeRoomIdRef.current !== roomId) return;
+          scrollBehaviourRef.current = "smooth"; // new message → smooth scroll
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+          void loadRooms(); // update last-message preview in sidebar
+        } catch { /* ignore malformed */ }
+      };
+
+      es.onerror = () => {
+        es.close();
+        esRef.current = null;
+        const currentRoom = activeRoomIdRef.current;
+        if (!currentRoom || currentRoom !== roomId) return;
+        // Reload missed messages then reconnect
+        void loadMessages(currentRoom);
+        setTimeout(() => {
+          if (activeRoomIdRef.current === roomId) connectSSE(roomId);
+        }, 2000);
+      };
+    }
+
+    connectSSE(activeRoomId);
 
     return () => {
-      es.close();
+      esRef.current?.close();
       esRef.current = null;
     };
   }, [activeRoomId, loadMessages, loadRooms]);
 
-  // Scroll to bottom on new messages
+  // Reload messages when tab becomes visible again (user switches back to tab)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && activeRoomIdRef.current) {
+        void loadMessages(activeRoomIdRef.current);
+        void loadRooms();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [loadMessages, loadRooms]);
+
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: scrollBehaviourRef.current });
   }, [messages]);
 
   async function deleteRoom(roomId: string, e: React.MouseEvent) {
@@ -139,9 +211,8 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
       // Join silently
       await fetch(`/api/chat/rooms/${room.id}/spy`, { method: "POST" });
     }
-    setActiveRoomId(room.id);
-    setMessages([]);
-    loadMessages(room.id);
+    setMessages([]); // clear immediately so old room messages don't flash
+    setActiveRoomId(room.id); // triggers useEffect → loadMessages + SSE
   }
 
   async function sendMessage(e: React.FormEvent) {
@@ -158,6 +229,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
       });
       if (res.ok) {
         const msg = await res.json();
+        scrollBehaviourRef.current = "smooth";
         setMessages((prev) => [...prev, msg]);
         loadRooms();
       } else {
@@ -189,9 +261,8 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
         const exists = prev.find((r) => r.id === room.id);
         return exists ? prev.map((r) => r.id === room.id ? room : r) : [room, ...prev];
       });
-      setActiveRoomId(room.id);
       setMessages([]);
-      loadMessages(room.id);
+      setActiveRoomId(room.id); // triggers useEffect → loadMessages + SSE
       setShowNewChat(false);
       setSelectedMembers([]);
       setGroupName("");

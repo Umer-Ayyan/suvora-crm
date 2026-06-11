@@ -55,6 +55,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     include: { sender: { select: { id: true, name: true } } },
   });
 
-  broadcast(id, message);
+  // Get all (non-hidden) members to push global notifications
+  const members = await prisma.chatRoomMember.findMany({
+    where: { roomId: id },
+    select: { userId: true },
+  });
+  const memberIds = members.map((m) => m.userId);
+
+  broadcast(id, message, memberIds);
   return NextResponse.json(message);
 }
