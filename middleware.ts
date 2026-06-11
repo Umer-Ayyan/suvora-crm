@@ -37,6 +37,6 @@ export const config = {
   // Only protect page routes — exclude ALL /api/ routes (each handles its own auth),
   // _next internals, static files, favicon, and the login page itself.
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon\\.ico|login).*)",
+    "/((?!api|_next/static|_next/image|favicon\\.ico|login|apply).*)",
   ],
 };
