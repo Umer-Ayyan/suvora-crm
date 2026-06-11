@@ -147,8 +147,10 @@ export default async function LeadsPage({
         </p>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <ImportCSVModal />
         <AddLeadForm />
+      </div>
 
         <SearchFilter />
 
