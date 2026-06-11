@@ -14,7 +14,7 @@ export async function GET() {
   const include = {
     members: {
       where: { isHidden: false },
-      include: { user: { select: { id: true, name: true, employeeId: true, role: true } } },
+      include: { user: { select: { id: true, name: true, employeeId: true, role: true, lastSeenAt: true } } },
     },
     messages: {
       orderBy: { createdAt: "desc" as const },
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   const include = {
     members: {
       where: { isHidden: false },
-      include: { user: { select: { id: true, name: true, employeeId: true, role: true } } },
+      include: { user: { select: { id: true, name: true, employeeId: true, role: true, lastSeenAt: true } } },
     },
     messages: {
       orderBy: { createdAt: "desc" as const },

@@ -4,10 +4,17 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import { toast } from "sonner";
 
 type Employee = { id: string; name: string; employeeId: string; role: string; designation: string | null };
-type Member = { id: string; user: { id: string; name: string; employeeId: string; role: string } };
+type Member = { id: string; user: { id: string; name: string; employeeId: string; role: string; lastSeenAt: string | null } };
 type LastMsg = { id: string; content: string; sender: { id: string; name: string }; createdAt: string };
 type Room = { id: string; name: string | null; type: string; members: Member[]; messages: LastMsg[] };
-type Message = { id: string; content: string; senderId: string; sender: { id: string; name: string }; createdAt: string; readBy: { userId: string }[] };
+type Message = {
+  id: string; content: string; senderId: string;
+  sender: { id: string; name: string }; createdAt: string;
+  readBy: { userId: string }[];
+  // optimistic-only fields (not in DB)
+  status?: "sending" | "failed";
+  tempId?: string;
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function getRoomName(room: Room, currentUserId: string) {
@@ -52,6 +59,21 @@ function formatDateSeparator(dateStr: string) {
   return d.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
 }
 
+// Online = seen within last 60 seconds
+function isOnline(lastSeenAt: string | null | undefined) {
+  if (!lastSeenAt) return false;
+  return Date.now() - new Date(lastSeenAt).getTime() < 60_000;
+}
+
+function formatLastSeen(lastSeenAt: string | null | undefined) {
+  if (!lastSeenAt) return "Offline";
+  const diff = Math.floor((Date.now() - new Date(lastSeenAt).getTime()) / 1000);
+  if (diff < 60) return "Online";
+  if (diff < 3600) return `Last seen ${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `Last seen ${Math.floor(diff / 3600)}h ago`;
+  return `Last seen ${new Date(lastSeenAt).toLocaleDateString([], { day: "numeric", month: "short" })}`;
+}
+
 function isSameDay(a: string, b: string) {
   const da = new Date(a), db = new Date(b);
   return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
@@ -75,8 +97,28 @@ function Avatar({ name, size = 40, className = "" }: { name: string; size?: numb
   );
 }
 
-// ── Tick indicator ────────────────────────────────────────────────────────────
-function Ticks({ isRead }: { isRead: boolean }) {
+// ── Message status indicator ──────────────────────────────────────────────────
+function MessageStatus({ status, isRead }: { status?: "sending" | "failed"; isRead: boolean }) {
+  // Sending → clock icon
+  if (status === "sending") {
+    return (
+      <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13, flexShrink: 0 }}>
+        <circle cx="8" cy="8" r="6.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.4"/>
+        <path d="M8 5v3.5l2 1.5" stroke="rgba(255,255,255,0.4)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+  // Failed → exclamation
+  if (status === "failed") {
+    return (
+      <svg viewBox="0 0 16 16" fill="none" style={{ width: 13, height: 13, flexShrink: 0 }}>
+        <circle cx="8" cy="8" r="6.5" stroke="#f87171" strokeWidth="1.4"/>
+        <path d="M8 5v4" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"/>
+        <circle cx="8" cy="11" r="0.8" fill="#f87171"/>
+      </svg>
+    );
+  }
+  // Sent / Read → double ticks
   const color = isRead ? "#60a5fa" : "rgba(255,255,255,0.45)";
   return (
     <svg viewBox="0 0 18 11" fill="none" style={{ width: 16, height: 10, flexShrink: 0 }}>
@@ -109,7 +151,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
+  const [sending] = useState(false); // kept for button UI only
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatType, setNewChatType] = useState<"direct" | "group">("direct");
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
@@ -120,6 +162,8 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [spyMode, setSpyMode] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  // lastSeenAt per userId for live online tracking
+  const [lastSeenMap, setLastSeenMap] = useState<Record<string, string | null>>({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
@@ -245,6 +289,21 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     return () => document.removeEventListener("visibilitychange", fn);
   }, [loadMessages, loadRooms]);
 
+  // ── Heartbeat: update own lastSeenAt every 30s ──────────────────────────────
+  useEffect(() => {
+    const beat = () => fetch("/api/user/heartbeat", { method: "POST" }).catch(() => {});
+    void beat(); // immediate on mount
+    const t = setInterval(beat, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ── Sync lastSeenAt from room members into local map ────────────────────────
+  useEffect(() => {
+    const map: Record<string, string | null> = {};
+    rooms.forEach((r) => r.members.forEach((m) => { map[m.user.id] = m.user.lastSeenAt; }));
+    setLastSeenMap((prev) => ({ ...prev, ...map }));
+  }, [rooms]);
+
   // ── Scroll to bottom ────────────────────────────────────────────────────────
   useLayoutEffect(() => {
     const c = messagesContainerRef.current;
@@ -286,30 +345,61 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
   async function sendMessage(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!input.trim() || !activeRoomId || sending) return;
-    setSending(true);
+    if (!input.trim() || !activeRoomId) return;
     const content = input.trim();
+    const tempId = `temp_${Date.now()}`;
+    const roomId = activeRoomId;
+
+    // ── Optimistic: show message instantly with clock icon ──
+    const optimistic: Message = {
+      id: tempId, tempId, content, senderId: currentUserId,
+      sender: { id: currentUserId, name: currentUserName },
+      createdAt: new Date().toISOString(),
+      readBy: [], status: "sending",
+    };
+    scrollInstantRef.current = false;
+    setMessages((prev) => [...prev, optimistic]);
     setInput("");
-    if (inputRef.current) { inputRef.current.style.height = "auto"; }
+    if (inputRef.current) inputRef.current.style.height = "auto";
+
     try {
-      const res = await fetch(`/api/chat/rooms/${activeRoomId}/messages`, {
+      const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
       });
       if (res.ok) {
-        const msg = await res.json();
-        scrollInstantRef.current = false;
-        setMessages((prev) => [...prev, msg]);
+        const confirmed: Message = await res.json();
+        // Replace optimistic message with confirmed one
+        setMessages((prev) => prev.map((m) => m.tempId === tempId ? confirmed : m));
       } else {
-        toast.error("Failed to send");
-        setInput(content);
+        // Mark as failed
+        setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
       }
     } catch {
-      toast.error("Error");
-      setInput(content);
-    } finally {
-      setSending(false);
+      // Network error — mark as failed
+      setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
+    }
+  }
+
+  // Retry a failed message
+  async function retryMessage(msg: Message) {
+    if (!activeRoomId) return;
+    setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "sending" } : m));
+    try {
+      const res = await fetch(`/api/chat/rooms/${activeRoomId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: msg.content }),
+      });
+      if (res.ok) {
+        const confirmed: Message = await res.json();
+        setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? confirmed : m));
+      } else {
+        setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "failed" } : m));
+      }
+    } catch {
+      setMessages((prev) => prev.map((m) => m.tempId === msg.tempId ? { ...m, status: "failed" } : m));
     }
   }
 
@@ -516,18 +606,36 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
         ) : (
           <>
             {/* ── Chat Header ── */}
+            {(() => {
+              const otherMember = activeRoom.type === "direct"
+                ? activeRoom.members.find((m) => m.user.id !== currentUserId)
+                : null;
+              const otherLastSeen = otherMember ? (lastSeenMap[otherMember.user.id] ?? otherMember.user.lastSeenAt) : null;
+              const online = otherMember ? isOnline(otherLastSeen) : false;
+              return (
             <div className="flex items-center gap-3 px-5 py-3.5 flex-shrink-0"
               style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
-              {activeRoom.type === "group"
-                ? <GroupAvatar size={40} />
-                : <Avatar name={getRoomName(activeRoom, currentUserId)} size={40} />
-              }
+              <div className="relative">
+                {activeRoom.type === "group"
+                  ? <GroupAvatar size={40} />
+                  : <Avatar name={getRoomName(activeRoom, currentUserId)} size={40} />
+                }
+                {activeRoom.type === "direct" && (
+                  <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2"
+                    style={{
+                      background: online ? "#22c55e" : "rgba(255,255,255,0.25)",
+                      borderColor: "#0d0d1a",
+                    }} />
+                )}
+              </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-white">{getRoomName(activeRoom, currentUserId)}</p>
-                <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>
+                <p className="text-xs mt-0.5 flex items-center gap-1"
+                  style={{ color: online ? "#4ade80" : "rgba(255,255,255,0.35)" }}>
                   {activeRoom.type === "group"
                     ? `${activeRoom.members.length} members`
-                    : activeRoom.members.find((m) => m.user.id !== currentUserId)?.user.role ?? ""}
+                    : formatLastSeen(otherLastSeen)
+                  }
                 </p>
               </div>
               {isAdmin && spyMode && (
@@ -537,6 +645,8 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                 </span>
               )}
             </div>
+              );
+            })()}
 
             {/* ── Messages ── */}
             <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-4" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}>
@@ -565,9 +675,11 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                 const showAvatar = !isMe && (!next || next.senderId !== msg.senderId);
                 const showName = !isMe && activeRoom.type === "group" && (!prev || prev.senderId !== msg.senderId);
                 const isRead = msg.readBy?.some((r) => r.userId !== currentUserId) ?? false;
+                const isFailed = msg.status === "failed";
+                const isSending = msg.status === "sending";
 
                 return (
-                  <div key={msg.id}>
+                  <div key={msg.tempId ?? msg.id}>
                     {/* Date separator */}
                     {showDateSep && (
                       <div className="flex items-center gap-3 my-4">
@@ -581,15 +693,13 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                     )}
 
                     <div className={`flex items-end gap-2 mb-1 ${isMe ? "justify-end" : "justify-start"}`}>
-                      {/* Other person's avatar (group only) */}
                       {!isMe && (
                         <div className="flex-shrink-0" style={{ width: 32 }}>
-                          {showAvatar && <Avatar name={msg.sender.name} size={30} className="rounded-full!" />}
+                          {showAvatar && <Avatar name={msg.sender.name} size={30} />}
                         </div>
                       )}
 
                       <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[65%]`}>
-                        {/* Sender name (group) */}
                         {showName && (
                           <p className="text-[11px] font-semibold mb-1 px-1" style={{ color: getAvatarColor(msg.sender.name)[0] }}>
                             {msg.sender.name}
@@ -599,25 +709,36 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                         {/* Bubble */}
                         <div className="relative px-3.5 py-2.5 rounded-2xl"
                           style={{
-                            background: isMe
-                              ? "linear-gradient(135deg,#7c3aed,#4f46e5)"
-                              : "rgba(255,255,255,0.07)",
+                            background: isFailed
+                              ? "rgba(239,68,68,0.15)"
+                              : isMe ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.07)",
                             borderBottomRightRadius: isMe ? 4 : undefined,
                             borderBottomLeftRadius: !isMe ? 4 : undefined,
-                            boxShadow: isMe ? "0 2px 12px rgba(124,58,237,0.3)" : "none",
+                            boxShadow: isMe && !isFailed ? "0 2px 12px rgba(124,58,237,0.3)" : "none",
+                            opacity: isSending ? 0.75 : 1,
+                            border: isFailed ? "1px solid rgba(239,68,68,0.3)" : "none",
                           }}>
                           <p className="text-sm text-white leading-relaxed" style={{ wordBreak: "break-word" }}>
                             {msg.content}
                           </p>
 
-                          {/* Time + ticks inside bubble */}
+                          {/* Time + status */}
                           <div className={`flex items-center gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
                             <span className="text-[10px]" style={{ color: isMe ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.3)" }}>
                               {formatTime(msg.createdAt)}
                             </span>
-                            {isMe && <Ticks isRead={isRead} />}
+                            {isMe && <MessageStatus status={msg.status} isRead={isRead} />}
                           </div>
                         </div>
+
+                        {/* Failed: tap to retry */}
+                        {isFailed && (
+                          <button onClick={() => void retryMessage(msg)}
+                            className="text-[10px] mt-1 px-2 py-0.5 rounded-full transition-all hover:opacity-80"
+                            style={{ color: "#f87171", background: "rgba(239,68,68,0.1)" }}>
+                            ↺ Tap to retry
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

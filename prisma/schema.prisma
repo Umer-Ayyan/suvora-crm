@@ -306,6 +306,7 @@ model User {
   bloodGroup   String?
   gender       String?
   status       String    @default("active") // active | inactive | terminated
+  lastSeenAt   DateTime?
   createdAt    DateTime  @default(now())
 
   leads             Lead[]
