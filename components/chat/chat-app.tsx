@@ -47,12 +47,14 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [roleFilter, setRoleFilter] = useState("");
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [spyMode, setSpyMode] = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
   // Always-current ref so SSE callbacks never have stale closure
   const activeRoomIdRef = useRef<string | null>(null);
-  // Controls scroll behaviour: "instant" on load, "smooth" on new message
-  const scrollBehaviourRef = useRef<ScrollBehavior>("instant");
+  // true = instant scroll (load), false = smooth (new message)
+  const scrollInstantRef = useRef(true);
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
 
@@ -88,13 +90,16 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
           // Always refresh sidebar so last-message preview updates
           void loadRooms();
 
-          // If this message is for the currently active room, append it
           if (activeRoomIdRef.current === roomId) {
-            scrollBehaviourRef.current = "smooth";
+            // Active room → append message and scroll to bottom smoothly
+            scrollInstantRef.current = false;
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev;
               return [...prev, msg as Message];
             });
+          } else {
+            // Different room → increment unread badge
+            setUnreadCounts((prev) => ({ ...prev, [roomId]: (prev[roomId] ?? 0) + 1 }));
           }
         } catch { /* ignore */ }
       };
@@ -116,7 +121,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     try {
       const res = await fetch(`/api/chat/rooms/${roomId}/messages`);
       if (res.ok) {
-        scrollBehaviourRef.current = "instant";
+        scrollInstantRef.current = true;
         setMessages(await res.json());
       }
     } catch { /* silent */ }
@@ -144,14 +149,13 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
       es.onmessage = (e) => {
         try {
           const msg: Message = JSON.parse(e.data);
-          // Only append if still in the same room
           if (activeRoomIdRef.current !== roomId) return;
-          scrollBehaviourRef.current = "smooth"; // new message → smooth scroll
+          scrollInstantRef.current = false;
           setMessages((prev) => {
             if (prev.some((m) => m.id === msg.id)) return prev;
             return [...prev, msg];
           });
-          void loadRooms(); // update last-message preview in sidebar
+          void loadRooms();
         } catch { /* ignore malformed */ }
       };
 
@@ -190,7 +194,15 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: scrollBehaviourRef.current });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (scrollInstantRef.current) {
+      // Instant jump — no animation (page load / room switch)
+      container.scrollTop = container.scrollHeight;
+    } else {
+      // Smooth scroll for new incoming/sent message
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   async function deleteRoom(roomId: string, e: React.MouseEvent) {
@@ -208,10 +220,11 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
   async function openRoom(room: Room) {
     if (isAdmin && spyMode) {
-      // Join silently
       await fetch(`/api/chat/rooms/${room.id}/spy`, { method: "POST" });
     }
-    setMessages([]); // clear immediately so old room messages don't flash
+    // Clear unread badge for this room
+    setUnreadCounts((prev) => ({ ...prev, [room.id]: 0 }));
+    setMessages([]);
     setActiveRoomId(room.id); // triggers useEffect → loadMessages + SSE
   }
 
@@ -229,7 +242,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
       });
       if (res.ok) {
         const msg = await res.json();
-        scrollBehaviourRef.current = "smooth";
+        scrollInstantRef.current = false;
         setMessages((prev) => [...prev, msg]);
         loadRooms();
       } else {
@@ -324,6 +337,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
               const lastMsg = room.messages[0];
               const isActive = room.id === activeRoomId;
               const isGroup = room.type === "group";
+              const unread = unreadCounts[room.id] ?? 0;
               return (
                 <div key={room.id} className="group/room relative">
                 <button
@@ -331,20 +345,34 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                   className="w-full flex items-center gap-3 px-4 py-3 transition-all text-left"
                   style={{ background: isActive ? "rgba(124,58,237,0.15)" : "transparent" }}
                 >
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    style={{ background: isGroup ? "rgba(6,182,212,0.2)" : "rgba(124,58,237,0.2)", color: isGroup ? "#67e8f9" : "#c4b5fd" }}>
-                    {isGroup
-                      ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                      : getRoomInitial(room, currentUserId)
-                    }
+                  {/* Avatar with unread dot */}
+                  <div className="relative flex-shrink-0">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold"
+                      style={{ background: isGroup ? "rgba(6,182,212,0.2)" : "rgba(124,58,237,0.2)", color: isGroup ? "#67e8f9" : "#c4b5fd" }}>
+                      {isGroup
+                        ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        : getRoomInitial(room, currentUserId)
+                      }
+                    </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-white truncate">{getRoomName(room, currentUserId)}</p>
-                      {lastMsg && <span className="text-xs flex-shrink-0 ml-1" style={{ color: "rgba(255,255,255,0.3)" }}>{timeAgo(lastMsg.createdAt)}</span>}
+                    <div className="flex items-center justify-between gap-1">
+                      <p className={`text-sm truncate ${unread > 0 && !isActive ? "font-bold text-white" : "font-medium text-white"}`}>
+                        {getRoomName(room, currentUserId)}
+                      </p>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {lastMsg && <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{timeAgo(lastMsg.createdAt)}</span>}
+                        {unread > 0 && !isActive && (
+                          <span className="min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1"
+                            style={{ background: "#22c55e" }}>
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {lastMsg ? (
-                      <p className="text-xs truncate mt-0.5" style={{ color: "rgba(255,255,255,0.4)" }}>
+                      <p className={`text-xs truncate mt-0.5 ${unread > 0 && !isActive ? "font-semibold" : ""}`}
+                        style={{ color: unread > 0 && !isActive ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.4)" }}>
                         {lastMsg.sender.id === currentUserId ? "You" : lastMsg.sender.name}: {lastMsg.content}
                       </p>
                     ) : (
@@ -418,7 +446,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
               {messages.length === 0 && (
                 <div className="text-center py-8 text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>
                   No messages yet. Say hello! 👋
