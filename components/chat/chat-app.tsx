@@ -167,8 +167,10 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [replyTo, setReplyTo]           = useState<Message | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [newMsgCount, setNewMsgCount]   = useState(0);
-  const [msgSearch, setMsgSearch]       = useState("");
-  const [showMsgSearch, setShowMsgSearch] = useState(false);
+  const [msgSearch, setMsgSearch]           = useState("");
+  const [showMsgSearch, setShowMsgSearch]   = useState(false);
+  const [longPressMsg, setLongPressMsg]     = useState<Message | null>(null);
+  const [longPressMsgTime, setLongPressMsgTime] = useState(0);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const activeRoomIdRef      = useRef<string | null>(null);
@@ -179,6 +181,12 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const typingTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevRoomsRef         = useRef<Room[]>([]);
   const loadRoomsTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Swipe-to-reply refs (direct DOM — no re-renders needed)
+  const swipeStartXRef       = useRef(0);
+  const swipeStartYRef       = useRef(0);
+  const swipingIdRef         = useRef<string | null>(null);
+  const swipeLockedRef       = useRef(false); // locked to horizontal
+  const longPressTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) ?? null;
 
@@ -643,6 +651,75 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     if (e.key === "Escape" && replyTo) setReplyTo(null);
   }
 
+  // ── Mobile: Long press ────────────────────────────────────────────────────
+  function onMsgTouchStart(e: React.TouchEvent, msg: Message) {
+    if (msg.isDeleted || msg.status === "sending") return;
+    longPressTimerRef.current = setTimeout(() => {
+      navigator.vibrate?.(50);
+      setLongPressMsg(msg);
+      setLongPressMsgTime(Date.now());
+      // Cancel any swipe in progress
+      swipingIdRef.current = null;
+    }, 480);
+  }
+  function onMsgTouchEnd() {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+  }
+
+  // ── Mobile: Swipe right to reply ─────────────────────────────────────────
+  function onSwipeTouchStart(e: React.TouchEvent, msgId: string) {
+    swipeStartXRef.current  = e.touches[0].clientX;
+    swipeStartYRef.current  = e.touches[0].clientY;
+    swipingIdRef.current    = msgId;
+    swipeLockedRef.current  = false;
+  }
+
+  function onSwipeTouchMove(e: React.TouchEvent, msgId: string) {
+    if (swipingIdRef.current !== msgId) return;
+    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+
+    const dx = e.touches[0].clientX - swipeStartXRef.current;
+    const dy = Math.abs(e.touches[0].clientY - swipeStartYRef.current);
+
+    // Lock direction on first significant move
+    if (!swipeLockedRef.current) {
+      if (dy > 8 && dy > Math.abs(dx)) { swipingIdRef.current = null; return; } // vertical scroll wins
+      if (Math.abs(dx) > 8) swipeLockedRef.current = true;
+      else return;
+    }
+
+    if (dx <= 0 || dx > 90) return; // only right swipe, max 90px
+
+    const offset  = Math.min(dx * 0.55, 50);
+    const opacity = Math.min(dx / 60, 1);
+
+    const wrap = document.querySelector(`[data-msgid="${msgId}"] .swipe-wrap`) as HTMLElement | null;
+    const icon = document.querySelector(`[data-msgid="${msgId}"] .swipe-icon`) as HTMLElement | null;
+    if (wrap) wrap.style.transform = `translateX(${offset}px)`;
+    if (icon) { icon.style.opacity = String(opacity); icon.style.transform = `scale(${0.5 + opacity * 0.5})`; }
+  }
+
+  function onSwipeTouchEnd(e: React.TouchEvent, msg: Message) {
+    if (swipingIdRef.current !== msg.id && swipingIdRef.current !== msg.tempId) return;
+
+    const dx = e.changedTouches[0].clientX - swipeStartXRef.current;
+    swipingIdRef.current   = null;
+    swipeLockedRef.current = false;
+
+    const wrap = document.querySelector(`[data-msgid="${msg.id}"] .swipe-wrap`) as HTMLElement | null;
+    const icon = document.querySelector(`[data-msgid="${msg.id}"] .swipe-icon`) as HTMLElement | null;
+
+    // Snap back with spring animation
+    if (wrap) { wrap.style.transition = "transform 0.25s cubic-bezier(0.34,1.56,0.64,1)"; wrap.style.transform = "translateX(0)"; setTimeout(() => { if (wrap) wrap.style.transition = ""; }, 260); }
+    if (icon) { icon.style.transition = "opacity 0.2s,transform 0.2s"; icon.style.opacity = "0"; icon.style.transform = "scale(0)"; setTimeout(() => { if (icon) icon.style.transition = ""; }, 220); }
+
+    if (dx > 50 && !msg.isDeleted && msg.status !== "sending") {
+      navigator.vibrate?.(30);
+      setReplyTo(msg);
+      setTimeout(() => inputRef.current?.focus(), 80);
+    }
+  }
+
   async function createChat() {
     if (selectedMembers.length === 0) { toast.error("Select at least one member"); return; }
     const res = await fetch("/api/chat/rooms", {
@@ -976,7 +1053,21 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                             </div>
                           )}
 
-                          <div className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}>
+                          {/* Swipe-to-reply wrapper — full row */}
+                          <div className={`flex items-end gap-2 ${isMe ? "justify-end" : "justify-start"}`}
+                            onTouchStart={(e) => { onSwipeTouchStart(e, msg.tempId ?? msg.id); onMsgTouchStart(e, msg); }}
+                            onTouchMove={(e) => onSwipeTouchMove(e, msg.tempId ?? msg.id)}
+                            onTouchEnd={(e) => { onMsgTouchEnd(); onSwipeTouchEnd(e, msg); }}
+                            onTouchCancel={onMsgTouchEnd}>
+
+                            {/* Swipe reply icon (appears from left) */}
+                            <div className="swipe-icon flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full"
+                              style={{ opacity: 0, transform: "scale(0)", background: "rgba(124,58,237,0.3)", position: "absolute", left: isMe ? "auto" : 0, right: isMe ? 0 : "auto", pointerEvents: "none", zIndex: 5 }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth={2.5} style={{ width: 16, height: 16 }}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h13a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4"/>
+                              </svg>
+                            </div>
+
                             {/* Avatar slot for others */}
                             {!isMe && (
                               <div className="flex-shrink-0" style={{ width: 32 }}>
@@ -984,7 +1075,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                               </div>
                             )}
 
-                            <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[72%] md:max-w-[60%]`}>
+                            <div className={`swipe-wrap flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[72%] md:max-w-[60%]`}>
                               {/* Sender name (group) */}
                               {showName && (
                                 <p className="text-[11px] font-semibold mb-1 px-1"
@@ -994,9 +1085,9 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                               )}
 
                               <div className="relative group/msg">
-                                {/* ── Action buttons on hover ── */}
+                                {/* ── Action buttons on hover (desktop only) ── */}
                                 {!isDeleted && !isSending && !isEditing && (
-                                  <div className={`absolute top-1 flex items-center gap-1 z-10 opacity-0 group-hover/msg:opacity-100 transition-opacity ${isMe ? "-left-20" : "-right-20"}`}>
+                                  <div className={`absolute top-1 hidden md:flex items-center gap-1 z-10 opacity-0 group-hover/msg:opacity-100 transition-opacity ${isMe ? "-left-20" : "-right-20"}`}>
                                     {/* Reply */}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setReplyTo(msg); setTimeout(() => inputRef.current?.focus(), 50); }}
@@ -1191,8 +1282,8 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                                   ↺ Tap to retry
                                 </button>
                               )}
-                            </div>
-                          </div>
+                            </div>{/* end swipe-wrap */}
+                          </div>{/* end row */}
                         </div>
                       );
                     })}
@@ -1268,6 +1359,135 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
           })()}
         </div>
       </div>
+
+      {/* ══════════════════════ LONG PRESS BOTTOM SHEET (mobile) ══════════════════════ */}
+      {longPressMsg && (() => {
+        const msg      = longPressMsg;
+        const isMe     = msg.senderId === currentUserId;
+        const isDeleted = !!msg.isDeleted;
+        const ageMs     = longPressMsgTime - new Date(msg.createdAt).getTime();
+        const canEdit   = isMe && !isDeleted && ageMs < 15 * 60 * 1000;
+        const canDelAll = (isMe || isAdmin) && !isDeleted && (isAdmin || ageMs < 24 * 60 * 60 * 1000);
+        const reactions = msg.reactions ?? {};
+
+        const close = () => setLongPressMsg(null);
+
+        return (
+          <div className="fixed inset-0 z-50 flex flex-col justify-end md:hidden"
+            style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}
+            onClick={close}>
+
+            {/* Message preview */}
+            <div className="px-4 pb-3 flex justify-center pointer-events-none">
+              <div className="max-w-[80vw] px-4 py-2.5 rounded-2xl text-sm text-white"
+                style={{ background: isMe ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.12)" }}>
+                {msg.replyTo && (
+                  <div className="mb-1.5 px-2 py-1 rounded-lg text-xs"
+                    style={{ background: "rgba(0,0,0,0.2)", borderLeft: `3px solid ${getAvatarColors(msg.replyTo.sender.name)[0]}` }}>
+                    <p className="font-semibold" style={{ color: getAvatarColors(msg.replyTo.sender.name)[0] }}>{msg.replyTo.sender.name}</p>
+                    <p className="opacity-60 truncate">{msg.replyTo.content}</p>
+                  </div>
+                )}
+                <p className="leading-relaxed" style={{ wordBreak: "break-word" }}>{msg.content}</p>
+              </div>
+            </div>
+
+            {/* Bottom sheet */}
+            <div className="rounded-t-3xl overflow-hidden" style={{ background: "#13131f", border: "1px solid rgba(255,255,255,0.08)" }}
+              onClick={(e) => e.stopPropagation()}>
+
+              {/* Reaction row */}
+              <div className="flex items-center justify-around px-5 py-4"
+                style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                {QUICK_EMOJIS.map((emoji) => {
+                  const mine = reactions[emoji]?.includes(currentUserId);
+                  const count = reactions[emoji]?.length ?? 0;
+                  return (
+                    <button key={emoji}
+                      onClick={() => { void reactToMessage(msg.id, emoji); close(); }}
+                      className="flex flex-col items-center gap-1 transition-all active:scale-90"
+                      style={{ minWidth: 40 }}>
+                      <span className="text-2xl" style={{ filter: mine ? "none" : "grayscale(0.2)" }}>{emoji}</span>
+                      {count > 0 && <span className="text-[10px] font-semibold" style={{ color: mine ? "#c4b5fd" : "rgba(255,255,255,0.4)" }}>{count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Actions */}
+              <div className="pb-safe">
+                {/* Reply */}
+                <button onClick={() => { setReplyTo(msg); setTimeout(() => inputRef.current?.focus(), 80); close(); }}
+                  className="w-full flex items-center gap-4 px-6 py-4 active:bg-white/5 transition-all text-left">
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(124,58,237,0.15)" }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth={2} style={{ width: 18, height: 18 }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h13a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4"/>
+                    </svg>
+                  </div>
+                  <span className="text-sm font-medium text-white">Reply</span>
+                </button>
+
+                {canEdit && (
+                  <button onClick={() => { setEditingId(msg.id); setEditContent(msg.content); close(); }}
+                    className="w-full flex items-center gap-4 px-6 py-4 active:bg-white/5 transition-all text-left">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.07)" }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} style={{ width: 18, height: 18 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white">Edit</p>
+                      <p className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>Within 15 minutes</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Copy */}
+                <button onClick={() => { navigator.clipboard?.writeText(msg.content).catch(() => {}); close(); }}
+                  className="w-full flex items-center gap-4 px-6 py-4 active:bg-white/5 transition-all text-left">
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.07)" }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} style={{ width: 18, height: 18 }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                  </div>
+                  <span className="text-sm font-medium text-white">Copy</span>
+                </button>
+
+                {!isDeleted && (
+                  <button onClick={() => { void deleteMessage(msg.id, "me"); close(); }}
+                    className="w-full flex items-center gap-4 px-6 py-4 active:bg-white/5 transition-all text-left">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(234,179,8,0.12)" }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth={2} style={{ width: 18, height: 18 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                      </svg>
+                    </div>
+                    <span className="text-sm font-medium" style={{ color: "#fbbf24" }}>Delete for Me</span>
+                  </button>
+                )}
+
+                {canDelAll && (
+                  <button onClick={() => { void deleteMessage(msg.id, "everyone"); close(); }}
+                    className="w-full flex items-center gap-4 px-6 py-4 active:bg-white/5 transition-all text-left"
+                    style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center" style={{ background: "rgba(239,68,68,0.12)" }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth={2} style={{ width: 18, height: 18 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: "#f87171" }}>Delete for Everyone</p>
+                      {!isAdmin && <p className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>Within 24 hours</p>}
+                    </div>
+                  </button>
+                )}
+
+                {/* Safe area spacer */}
+                <div style={{ height: "env(safe-area-inset-bottom, 16px)" }} />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ══════════════════════════ NEW CHAT MODAL ══════════════════════════ */}
       {showNewChat && (
