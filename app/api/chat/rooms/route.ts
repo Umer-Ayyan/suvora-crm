@@ -1,66 +1,63 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSessionUserId } from "@/lib/get-session-user-id";
 import { NextRequest, NextResponse } from "next/server";
 
-// GET /api/chat/rooms — list rooms for current user
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = (session.user as any).id;
+  const userId = await getSessionUserId(session);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const isAdmin = (session.user as any).role === "admin";
 
-  let rooms;
-  if (isAdmin) {
-    // Admin sees ALL rooms
-    rooms = await prisma.chatRoom.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        members: {
-          where: { isHidden: false },
-          include: { user: { select: { id: true, name: true, employeeId: true, role: true } } },
-        },
-        messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          include: { sender: { select: { id: true, name: true } } },
-        },
-      },
-    });
-  } else {
-    // Regular users see only their rooms (non-hidden membership)
-    rooms = await prisma.chatRoom.findMany({
-      where: { members: { some: { userId, isHidden: false } } },
-      orderBy: { createdAt: "desc" },
-      include: {
-        members: {
-          where: { isHidden: false },
-          include: { user: { select: { id: true, name: true, employeeId: true, role: true } } },
-        },
-        messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          include: { sender: { select: { id: true, name: true } } },
-        },
-      },
-    });
-  }
+  const include = {
+    members: {
+      where: { isHidden: false },
+      include: { user: { select: { id: true, name: true, employeeId: true, role: true } } },
+    },
+    messages: {
+      orderBy: { createdAt: "desc" as const },
+      take: 1,
+      include: { sender: { select: { id: true, name: true } } },
+    },
+  };
+
+  const rooms = isAdmin
+    ? await prisma.chatRoom.findMany({ orderBy: { createdAt: "desc" }, include })
+    : await prisma.chatRoom.findMany({
+        where: { members: { some: { userId, isHidden: false } } },
+        orderBy: { createdAt: "desc" },
+        include,
+      });
 
   return NextResponse.json(rooms);
 }
 
-// POST /api/chat/rooms — create room
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = (session.user as any).id;
+  const userId = await getSessionUserId(session);
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { type, name, memberIds } = await req.json();
 
   if (!Array.isArray(memberIds) || memberIds.length === 0)
     return NextResponse.json({ error: "Members required" }, { status: 400 });
 
-  // For direct: check if room already exists between these two users
+  const include = {
+    members: {
+      where: { isHidden: false },
+      include: { user: { select: { id: true, name: true, employeeId: true, role: true } } },
+    },
+    messages: {
+      orderBy: { createdAt: "desc" as const },
+      take: 1,
+      include: { sender: { select: { id: true, name: true } } },
+    },
+  };
+
+  // For direct: return existing room if already exists
   if (type === "direct" && memberIds.length === 1) {
     const otherId = memberIds[0];
     const existing = await prisma.chatRoom.findFirst({
@@ -71,13 +68,7 @@ export async function POST(req: NextRequest) {
           { members: { some: { userId: otherId, isHidden: false } } },
         ],
       },
-      include: {
-        members: {
-          where: { isHidden: false },
-          include: { user: { select: { id: true, name: true, employeeId: true, role: true } } },
-        },
-        messages: { orderBy: { createdAt: "desc" }, take: 1, include: { sender: { select: { id: true, name: true } } } },
-      },
+      include,
     });
     if (existing) return NextResponse.json(existing);
   }
@@ -89,17 +80,9 @@ export async function POST(req: NextRequest) {
       type: type || "direct",
       name: type === "group" ? (name || "Group Chat") : null,
       createdById: userId,
-      members: {
-        create: allMemberIds.map((id) => ({ userId: id })),
-      },
+      members: { create: allMemberIds.map((id) => ({ userId: id })) },
     },
-    include: {
-      members: {
-        where: { isHidden: false },
-        include: { user: { select: { id: true, name: true, employeeId: true, role: true } } },
-      },
-      messages: { orderBy: { createdAt: "desc" }, take: 1, include: { sender: { select: { id: true, name: true } } } },
-    },
+    include,
   });
 
   return NextResponse.json(room);
