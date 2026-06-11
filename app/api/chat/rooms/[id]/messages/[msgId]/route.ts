@@ -2,7 +2,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/get-session-user-id";
-import { broadcastEdit, broadcastDelete } from "@/lib/chat-broadcaster";
 import { NextRequest, NextResponse } from "next/server";
 
 const EDIT_LIMIT_MS           = 15 * 60 * 1000;
@@ -62,9 +61,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     include: { sender: { select: { id: true, name: true } }, readBy: { select: { userId: true } } },
   });
 
-  const members = await prisma.chatRoomMember.findMany({ where: { roomId }, select: { userId: true } });
-  broadcastEdit(roomId, msgId, updated.content, members.map((m) => m.userId));
-
   return NextResponse.json(updated);
 }
 
@@ -99,9 +95,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   }
 
   await prisma.chatMessage.update({ where: { id: msgId }, data: { isDeleted: true, content: "" } });
-
-  const members = await prisma.chatRoomMember.findMany({ where: { roomId }, select: { userId: true } });
-  broadcastDelete(roomId, msgId, members.map((m) => m.userId));
 
   return NextResponse.json({ deletedForAll: true });
 }

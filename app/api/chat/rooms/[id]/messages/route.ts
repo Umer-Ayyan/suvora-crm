@@ -1,7 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { broadcast } from "@/lib/chat-broadcaster";
 import { getSessionUserId } from "@/lib/get-session-user-id";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -76,12 +75,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     include: MSG_INCLUDE,
   });
 
-  const members = await prisma.chatRoomMember.findMany({
-    where: { roomId: id },
-    select: { userId: true },
-  });
-  const memberIds = members.map((m) => m.userId);
-
-  broadcast(id, message, memberIds);
   return NextResponse.json(message);
 }
