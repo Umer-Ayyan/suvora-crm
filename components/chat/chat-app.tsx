@@ -48,7 +48,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [spyMode, setSpyMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const esRef = useRef<EventSource | null>(null);
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) || null;
 
@@ -75,11 +75,44 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
   useEffect(() => {
     if (!activeRoomId) return;
+
+    // Initial load
     void loadMessages(activeRoomId);
-    const id = setInterval(() => void loadMessages(activeRoomId), 3000);
-    pollRef.current = id;
-    return () => clearInterval(id);
-  }, [activeRoomId, loadMessages]);
+
+    // SSE for real-time new messages
+    if (esRef.current) esRef.current.close();
+    const es = new EventSource(`/api/chat/rooms/${activeRoomId}/stream`);
+    esRef.current = es;
+
+    es.onmessage = (e) => {
+      try {
+        const msg: Message = JSON.parse(e.data);
+        setMessages((prev) => {
+          // Avoid duplicates
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        // Refresh room list for last-message preview
+        void loadRooms();
+      } catch { /* ignore malformed */ }
+    };
+
+    es.onerror = () => {
+      // SSE disconnected — reconnect after 2s
+      es.close();
+      setTimeout(() => {
+        if (activeRoomId) {
+          const newEs = new EventSource(`/api/chat/rooms/${activeRoomId}/stream`);
+          esRef.current = newEs;
+        }
+      }, 2000);
+    };
+
+    return () => {
+      es.close();
+      esRef.current = null;
+    };
+  }, [activeRoomId, loadMessages, loadRooms]);
 
   // Scroll to bottom on new messages
   useEffect(() => {

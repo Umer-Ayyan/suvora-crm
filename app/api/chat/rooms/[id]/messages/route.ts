@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { broadcast } from "@/lib/chat-broadcaster";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET messages for a room
@@ -57,6 +58,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     data: { content: content.trim(), roomId: id, senderId: userId },
     include: { sender: { select: { id: true, name: true } } },
   });
+
+  // Push to all connected SSE clients in this room instantly
+  broadcast(id, message);
 
   return NextResponse.json(message);
 }
