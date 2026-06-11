@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { authOptions } from "@/lib/auth";
 import AddEmployeeForm from "@/components/employees/add-employee-form";
+import RoleSelect from "@/components/employees/role-select";
 import DeleteEmployee from "@/components/employees/delete-employee";
 import ResetPassword from "@/components/employees/reset-password";
 import EditEmployeeForm from "@/components/employees/edit-employee-form";
@@ -73,16 +74,7 @@ export default async function EmployeesPage() {
                     {employee.employeeId}
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full capitalize"
-                      style={
-                        employee.role === "admin"
-                          ? { background: "rgba(124,58,237,0.15)", color: "#c4b5fd" }
-                          : employee.role === "manager"
-                          ? { background: "rgba(6,182,212,0.12)", color: "#67e8f9" }
-                          : { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.6)" }
-                      }>
-                      {employee.role}
-                    </span>
+                    <RoleSelect id={employee.id} currentRole={employee.role} />
                   </td>
                   <td className="px-5 py-3.5 text-sm" style={{ color: "rgba(255,255,255,0.5)" }}>
                     {employee.department || <span style={{ color: "rgba(255,255,255,0.25)" }}>—</span>}
