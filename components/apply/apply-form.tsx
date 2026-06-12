@@ -78,7 +78,7 @@ export default function ApplyForm() {
         </div>
         <h2 className="text-2xl font-bold text-white mb-3">Application Submitted!</h2>
         <p className="text-base mb-2" style={{ color: "rgba(255,255,255,0.6)" }}>
-          Thank you <span className="text-violet-400 font-semibold">{form.name}</span>, we've received your application.
+          Thank you <span className="text-violet-400 font-semibold">{form.name}</span>, we&apos;ve received your application.
         </p>
         <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
           Our team will review your profile and get back to you via email.
@@ -103,7 +103,7 @@ export default function ApplyForm() {
           </div>
           <h1 className="text-2xl font-bold text-white">Apply Now</h1>
           <p className="text-sm mt-2" style={{ color: "rgba(255,255,255,0.4)" }}>
-            Fill in your details and upload your CV — we'll be in touch soon.
+            Fill in your details and upload your CV — we&apos;ll be in touch soon.
           </p>
         </div>
 
