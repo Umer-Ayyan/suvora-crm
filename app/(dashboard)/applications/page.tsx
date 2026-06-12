@@ -184,6 +184,8 @@ export default function ApplicationsPage() {
   const [saving, setSaving]       = useState(false);
   const [search, setSearch]       = useState("");
   const [cvPreview, setCvPreview] = useState<{ id: string; fileName: string; fileType: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<Application | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Auth guard
   useEffect(() => {
@@ -228,13 +230,16 @@ export default function ApplicationsPage() {
     setSaving(false);
   }
 
-  async function deleteApp(id: string) {
-    if (!confirm("Delete this application? This cannot be undone.")) return;
-    const res = await fetch(`/api/applications/${id}`, { method: "DELETE" });
+  async function confirmDelete() {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    const res = await fetch(`/api/applications/${deleteConfirm.id}`, { method: "DELETE" });
     if (res.ok) {
-      setApps((prev) => prev.filter((a) => a.id !== id));
-      if (selected?.id === id) setSelected(null);
+      setApps((prev) => prev.filter((a) => a.id !== deleteConfirm.id));
+      if (selected?.id === deleteConfirm.id) setSelected(null);
     }
+    setDeleting(false);
+    setDeleteConfirm(null);
   }
 
   const filtered = apps.filter((a) => {
@@ -247,6 +252,59 @@ export default function ApplicationsPage() {
 
   return (
     <>
+      {/* ── Delete Confirm Modal ── */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", animation: "fadeIn 0.2s ease" }}>
+          <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}} @keyframes modalPop{from{opacity:0;transform:scale(0.92) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+          <div className="w-full max-w-sm rounded-3xl p-6 text-center"
+            style={{
+              background: "#0d0d1a",
+              border: "1px solid rgba(255,255,255,0.1)",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+              animation: "modalPop 0.25s cubic-bezier(0.34,1.56,0.64,1) both",
+            }}>
+            {/* Icon */}
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)" }}>
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="#f87171" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </div>
+            {/* Text */}
+            <h3 className="text-base font-bold text-white mb-1">Delete Application?</h3>
+            <p className="text-sm mb-1" style={{ color: "rgba(255,255,255,0.5)" }}>
+              <span className="font-semibold" style={{ color: "rgba(255,255,255,0.75)" }}>
+                {deleteConfirm.name}
+              </span> — {deleteConfirm.position}
+            </p>
+            <p className="text-xs mb-6" style={{ color: "rgba(255,255,255,0.3)" }}>
+              This action cannot be undone.
+            </p>
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-3 rounded-2xl text-sm font-semibold transition-all hover:opacity-80"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}>
+                Cancel
+              </button>
+              <button onClick={confirmDelete} disabled={deleting}
+                className="flex-1 py-3 rounded-2xl text-sm font-bold transition-all hover:opacity-80 disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg,#dc2626,#b91c1c)", color: "white",
+                  boxShadow: "0 4px 16px rgba(220,38,38,0.3)" }}>
+                {deleting ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    Deleting...
+                  </span>
+                ) : "Yes, Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CV Preview Modal */}
       {cvPreview && (
         <CvPreviewModal
@@ -381,7 +439,7 @@ export default function ApplicationsPage() {
 
                   {/* Delete (admin only) */}
                   {role === "admin" && (
-                    <button onClick={() => deleteApp(selected.id)}
+                    <button onClick={() => setDeleteConfirm(selected)}
                       className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
                       style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}>
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
