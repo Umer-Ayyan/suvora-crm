@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const MAX_SIZE = 5 * 1024 * 1024;
 
@@ -15,263 +15,381 @@ function isValidUrl(val: string) {
   } catch { return false; }
 }
 
-// ── Success Screen — CV Journey ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Global styles (injected once)
+// ─────────────────────────────────────────────────────────────────────────────
+const STYLES = `
+  @keyframes pageFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes sceneRise {
+    from { opacity: 0; transform: translateY(24px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);    }
+  }
+  @keyframes cvFloat {
+    0%   { transform: translateY(0px)    rotate(-5deg) scale(1);    opacity: 1; }
+    50%  { transform: translateY(-130px) rotate(1deg)  scale(0.88); opacity: 1; }
+    80%  { transform: translateY(-220px) rotate(-1deg) scale(0.72); opacity: 0.6; }
+    100% { transform: translateY(-260px) rotate(0deg)  scale(0.55); opacity: 0; }
+  }
+  @keyframes trayReceive {
+    0%,100% { transform: translateY(0) scale(1); }
+    30%     { transform: translateY(3px) scale(1.04); }
+    60%     { transform: translateY(-2px) scale(0.98); }
+    80%     { transform: translateY(1px) scale(1.01); }
+  }
+  @keyframes stampIn {
+    0%   { opacity: 0; transform: rotate(15deg) scale(0.4) translateY(-20px); }
+    55%  { opacity: 1; transform: rotate(10deg) scale(1.08) translateY(2px); }
+    75%  { transform: rotate(11deg) scale(0.97) translateY(0); }
+    100% { opacity: 1; transform: rotate(11deg) scale(1)    translateY(0); }
+  }
+  @keyframes rowIn {
+    from { opacity: 0; transform: translateX(-12px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes softPulse {
+    0%,100% { opacity: 0.5; transform: scale(0.8); }
+    50%     { opacity: 1;   transform: scale(1);   }
+  }
+  @keyframes glowBreath {
+    0%,100% { opacity: 0.5; }
+    50%     { opacity: 1; }
+  }
+
+  /* Button animation */
+  @keyframes btnShrink {
+    from { max-width: 100%; }
+    to   { max-width: 100%; }
+  }
+  @keyframes trackAppear {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes cvTravel {
+    0%   { left: -60px; opacity: 0; }
+    8%   { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { left: calc(100% + 20px); opacity: 0; }
+  }
+  @keyframes inboxPop {
+    0%,100% { transform: translateY(-50%) scale(1); }
+    40%     { transform: translateY(-50%) scale(1.18); }
+    70%     { transform: translateY(-50%) scale(0.95); }
+  }
+  @keyframes formFadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-12px); }
+  }
+`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Success Screen
+// ─────────────────────────────────────────────────────────────────────────────
 function SuccessScreen({ name }: { name: string }) {
   return (
-    <div className="min-h-screen flex items-center justify-center p-6"
-      style={{ background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)" }}>
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 24, background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)",
+      animation: "pageFadeIn 0.6s ease both",
+    }}>
+      <style>{STYLES}</style>
 
-      <style>{`
-        @keyframes fadeUp   { from{opacity:0;transform:translateY(32px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes slideIn  { from{transform:translateX(-110%)} to{transform:translateX(0)} }
-        @keyframes floatCV  {
-          0%   { transform: translateY(0) rotate(-4deg); }
-          40%  { transform: translateY(-180px) rotate(2deg) scale(0.85); }
-          70%  { transform: translateY(-280px) rotate(0deg) scale(0.7); opacity:1; }
-          100% { transform: translateY(-310px) scale(0.5); opacity:0; }
-        }
-        @keyframes inboxGlow {
-          0%,100% { box-shadow: 0 0 0 rgba(52,211,153,0); }
-          50%      { box-shadow: 0 0 40px rgba(52,211,153,0.5); }
-        }
-        @keyframes stampDrop {
-          0%   { transform: translateY(-40px) rotate(-8deg); opacity:0; }
-          60%  { transform: translateY(4px) rotate(2deg); opacity:1; }
-          80%  { transform: translateY(-3px) rotate(-1deg); }
-          100% { transform: translateY(0) rotate(0deg); opacity:1; }
-        }
-        @keyframes stampScale {
-          0%   { transform: scale(0); opacity:0; }
-          60%  { transform: scale(1.15); opacity:1; }
-          100% { transform: scale(1); opacity:1; }
-        }
-        @keyframes lineGrow {
-          from { width:0; opacity:0; }
-          to   { width:100%; opacity:1; }
-        }
-        @keyframes trayShake {
-          0%,100% { transform:translateX(0); }
-          20%      { transform:translateX(-4px) rotate(-1deg); }
-          40%      { transform:translateX(4px) rotate(1deg); }
-          60%      { transform:translateX(-2px); }
-          80%      { transform:translateX(2px); }
-        }
-        @keyframes dotPulse {
-          0%,80%,100%{ transform:scale(0.6); opacity:0.4; }
-          40%         { transform:scale(1);   opacity:1;   }
-        }
-        .cv-fly    { animation: floatCV 1.4s 0.2s cubic-bezier(0.4,0,0.2,1) forwards; }
-        .inbox-hit { animation: trayShake 0.4s 1.5s ease, inboxGlow 1.2s 1.5s ease; }
-        .stamp     { animation: stampDrop 0.5s 1.8s cubic-bezier(0.34,1.56,0.64,1) both; }
-        .stamp-txt { animation: stampScale 0.4s 2s cubic-bezier(0.34,1.56,0.64,1) both; }
-        .line1     { animation: lineGrow 0.6s 2.4s ease both; }
-        .line2     { animation: lineGrow 0.6s 2.7s ease both; }
-        .title     { animation: fadeUp 0.6s 2.3s ease both; opacity:0; }
-        .sub       { animation: fadeUp 0.6s 2.6s ease both; opacity:0; }
-        .card-in   { animation: fadeUp 0.7s 0s ease both; }
-      `}</style>
+      {/* Ambient glow */}
+      <div style={{
+        position: "fixed", inset: 0, pointerEvents: "none",
+        background: "radial-gradient(ellipse 60% 50% at 50% 50%, rgba(124,58,237,0.1) 0%, transparent 70%)",
+        animation: "glowBreath 3s ease-in-out infinite",
+      }} />
 
-      <div className="card-in w-full max-w-sm text-center">
+      <div style={{ position: "relative", width: "100%", maxWidth: 360, textAlign: "center",
+        animation: "sceneRise 0.7s cubic-bezier(0.22,1,0.36,1) both" }}>
 
-        {/* Scene: desk with inbox tray */}
-        <div className="relative mx-auto mb-8" style={{ height: 220, width: 260 }}>
+        {/* ── Desk scene ── */}
+        <div style={{ position: "relative", height: 200, marginBottom: 32 }}>
 
-          {/* CV document — floats up into inbox */}
-          <div className="cv-fly absolute" style={{ bottom: 50, left: "50%", transform: "translateX(-50%) rotate(-4deg)", zIndex: 10 }}>
-            <div className="rounded-xl overflow-hidden"
-              style={{ width: 80, height: 100, background: "white", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
-              {/* CV lines */}
-              <div style={{ padding: "10px 10px 8px" }}>
-                <div style={{ height: 6, borderRadius: 3, background: "#7c3aed", marginBottom: 6, width: "70%" }} />
-                <div style={{ height: 3, borderRadius: 2, background: "#e5e7eb", marginBottom: 4, width: "90%" }} />
-                <div style={{ height: 3, borderRadius: 2, background: "#e5e7eb", marginBottom: 4, width: "75%" }} />
-                <div style={{ height: 3, borderRadius: 2, background: "#e5e7eb", marginBottom: 8, width: "60%" }} />
-                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "85%" }} />
-                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "70%" }} />
-                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "80%" }} />
-                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "55%" }} />
-                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "75%" }} />
-              </div>
+          {/* Background glow behind inbox */}
+          <div style={{
+            position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+            width: 140, height: 80, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(52,211,153,0.15) 0%, transparent 70%)",
+            animation: "glowBreath 2s 1.6s ease-in-out infinite",
+          }} />
+
+          {/* Inbox tray */}
+          <div style={{
+            position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)",
+            animation: "trayReceive 0.5s 1.55s cubic-bezier(0.22,1,0.36,1) both",
+          }}>
+            {/* Label */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginBottom: 6 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399",
+                boxShadow: "0 0 8px #34d399", animation: "softPulse 2s ease-in-out infinite" }} />
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.15em",
+                color: "#34d399", textTransform: "uppercase" }}>Inbox</span>
+            </div>
+            {/* Tray */}
+            <div style={{
+              width: 110, height: 64, borderRadius: 14,
+              background: "rgba(52,211,153,0.07)",
+              border: "1.5px solid rgba(52,211,153,0.3)",
+              position: "relative", overflow: "hidden",
+            }}>
+              {/* Slot */}
+              <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+                width: "55%", height: 3, background: "rgba(52,211,153,0.5)",
+                borderRadius: "0 0 3px 3px" }} />
+              {/* Stacked papers */}
+              {[3, 1, -1].map((rot, i) => (
+                <div key={i} style={{
+                  position: "absolute",
+                  bottom: 6 + i * 2, left: "50%",
+                  transform: `translateX(-50%) rotate(${rot}deg)`,
+                  width: 64, height: 36, borderRadius: 6,
+                  background: `rgba(255,255,255,${0.05 - i * 0.01})`,
+                  border: `1px solid rgba(255,255,255,${0.08 - i * 0.02})`,
+                }} />
+              ))}
             </div>
           </div>
 
-          {/* Inbox tray (top) */}
-          <div className="inbox-hit absolute" style={{ top: 10, left: "50%", transform: "translateX(-50%)", zIndex: 5 }}>
-            {/* Tray label */}
-            <div className="flex items-center justify-center gap-1.5 mb-2">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#34d399" }} />
-              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: "#34d399" }}>Inbox</span>
-            </div>
-            {/* Tray body */}
-            <div className="relative rounded-xl overflow-hidden"
-              style={{ width: 120, height: 70, background: "rgba(52,211,153,0.08)", border: "2px solid rgba(52,211,153,0.35)" }}>
-              {/* Tray slot */}
-              <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: "60%", height: 4, background: "rgba(52,211,153,0.4)", borderRadius: "0 0 4px 4px" }} />
-              {/* Stack of papers inside */}
-              <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", width: 70, height: 38, background: "rgba(255,255,255,0.06)", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)" }} />
-              <div style={{ position: "absolute", bottom: 6, left: "50%", transform: "translateX(-50%) rotate(2deg)", width: 68, height: 38, background: "rgba(255,255,255,0.04)", borderRadius: 6, border: "1px solid rgba(255,255,255,0.07)" }} />
-            </div>
-          </div>
-
-          {/* RECEIVED stamp — drops after CV lands */}
-          <div className="stamp absolute" style={{ top: 32, right: 10, zIndex: 20 }}>
-            <div className="rounded-lg px-3 py-1.5"
-              style={{ border: "2px solid #34d399", transform: "rotate(12deg)" }}>
-              <div className="stamp-txt text-xs font-black tracking-widest" style={{ color: "#34d399", fontSize: 10 }}>
-                RECEIVED
-              </div>
+          {/* RECEIVED stamp */}
+          <div style={{
+            position: "absolute", top: 20, right: 8,
+            animation: "stampIn 0.55s 1.85s cubic-bezier(0.34,1.56,0.64,1) both",
+            opacity: 0,
+          }}>
+            <div style={{
+              border: "2px solid rgba(52,211,153,0.7)", borderRadius: 8,
+              padding: "4px 10px", transform: "rotate(11deg)",
+              background: "rgba(52,211,153,0.06)",
+              boxShadow: "0 0 16px rgba(52,211,153,0.2)",
+            }}>
+              <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.2em",
+                color: "#34d399", textTransform: "uppercase" }}>Received</span>
             </div>
           </div>
 
-          {/* Desk surface */}
-          <div className="absolute bottom-0 left-0 right-0" style={{ height: 48 }}>
-            <div className="w-full h-full rounded-2xl"
-              style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))", border: "1px solid rgba(255,255,255,0.08)" }}>
-              {/* Desk items */}
-              <div style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 6, alignItems: "center" }}>
-                {/* Pen */}
-                <div style={{ width: 3, height: 22, borderRadius: 2, background: "rgba(167,139,250,0.5)", transform: "rotate(20deg)" }} />
-                {/* Cup */}
-                <div style={{ width: 14, height: 16, borderRadius: "0 0 4px 4px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }} />
-              </div>
+          {/* Floating CV */}
+          <div style={{
+            position: "absolute", bottom: 44, left: "50%",
+            transform: "translateX(-50%)",
+            animation: "cvFloat 1.3s 0.2s cubic-bezier(0.4,0,0.2,1) forwards",
+          }}>
+            <div style={{
+              width: 68, height: 88, borderRadius: 10, background: "white",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.5), 0 2px 8px rgba(124,58,237,0.2)",
+              padding: "10px 10px 8px", overflow: "hidden",
+            }}>
+              <div style={{ height: 5, borderRadius: 3, background: "#7c3aed", marginBottom: 6, width: "65%" }} />
+              {[90, 75, 60, 85, 70, 80, 55].map((w, i) => (
+                <div key={i} style={{
+                  height: 2.5, borderRadius: 2,
+                  background: i < 3 ? "#e5e7eb" : "#f3f4f6",
+                  marginBottom: 3.5, width: `${w}%`,
+                }} />
+              ))}
             </div>
+          </div>
+
+          {/* Desk */}
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0, height: 44,
+            background: "linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))",
+            border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16,
+          }}>
+            {/* Pen */}
+            <div style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%) rotate(18deg)",
+              width: 3, height: 20, borderRadius: 2, background: "rgba(167,139,250,0.45)" }} />
+            {/* Mug */}
+            <div style={{ position: "absolute", right: 28, top: "50%", transform: "translateY(-50%)",
+              width: 12, height: 14, borderRadius: "0 0 4px 4px",
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }} />
           </div>
         </div>
 
-        {/* Text content */}
-        <h2 className="title text-2xl font-black text-white mb-2">
+        {/* Text */}
+        <h2 style={{ fontSize: 26, fontWeight: 900, color: "white", marginBottom: 6, letterSpacing: "-0.02em",
+          animation: "rowIn 0.6s 2.1s ease both", opacity: 0 }}>
           Application Received!
         </h2>
-        <div className="sub">
-          <p className="text-sm font-semibold mb-4"
-            style={{ color: "rgba(255,255,255,0.45)" }}>
-            Hey <span style={{ color: "#a78bfa" }}>{name}</span>, your CV just landed in our inbox
-          </p>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", marginBottom: 24, lineHeight: 1.6,
+          animation: "rowIn 0.6s 2.3s ease both", opacity: 0 }}>
+          Hey <span style={{ color: "#a78bfa", fontWeight: 600 }}>{name}</span>,
+          your CV just landed in our inbox.
+        </p>
 
-          {/* Timeline */}
-          <div className="rounded-2xl p-4 text-left space-y-3"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-            {[
-              { label: "Application submitted",  done: true,  delay: "2.9s" },
-              { label: "Under review by our team", done: false, delay: "3.1s" },
-              { label: "We'll reach out via email", done: false, delay: "3.3s" },
-            ].map((step, i) => (
-              <div key={i} className="flex items-center gap-3"
-                style={{ animation: `fadeUp 0.5s ${step.delay} ease both`, opacity: 0 }}>
-                <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: step.done ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.05)", border: `1.5px solid ${step.done ? "#34d399" : "rgba(255,255,255,0.1)"}` }}>
-                  {step.done
-                    ? <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
-                    : <div className="w-1.5 h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />}
-                </div>
-                <span className="text-xs" style={{ color: step.done ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)" }}>
-                  {step.label}
-                </span>
+        {/* Timeline */}
+        <div style={{
+          background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+          borderRadius: 20, padding: "16px 18px",
+          animation: "rowIn 0.6s 2.5s ease both", opacity: 0,
+        }}>
+          {[
+            { text: "CV submitted successfully", done: true,  delay: "2.7s" },
+            { text: "Team notified, under review",  done: false, delay: "2.9s" },
+            { text: "We'll reach out via email",    done: false, delay: "3.1s" },
+          ].map((step, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 12,
+              marginBottom: i < 2 ? 14 : 0,
+              animation: `rowIn 0.5s ${step.delay} ease both`, opacity: 0,
+            }}>
+              <div style={{
+                width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: step.done ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)",
+                border: `1.5px solid ${step.done ? "#34d399" : "rgba(255,255,255,0.1)"}`,
+                transition: "all 0.3s ease",
+              }}>
+                {step.done
+                  ? <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+                    </svg>
+                  : <div style={{ width: 6, height: 6, borderRadius: "50%",
+                      background: "rgba(255,255,255,0.15)" }} />
+                }
               </div>
+              <span style={{
+                fontSize: 13, lineHeight: 1.4,
+                color: step.done ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.3)",
+              }}>{step.text}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Typing indicator */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 20,
+          animation: "rowIn 0.6s 3.4s ease both", opacity: 0 }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            {[0,1,2].map((i) => (
+              <div key={i} style={{
+                width: 5, height: 5, borderRadius: "50%", background: "#7c3aed",
+                animation: `softPulse 1.2s ${i * 0.18}s ease-in-out infinite`,
+              }} />
             ))}
           </div>
-
-          {/* Typing dots — "our team is reviewing" */}
-          <div className="flex items-center justify-center gap-2 mt-5"
-            style={{ animation: "fadeUp 0.5s 3.5s ease both", opacity: 0 }}>
-            <div className="flex gap-1">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="w-1.5 h-1.5 rounded-full"
-                  style={{ background: "#a78bfa", animation: `dotPulse 1.2s ${i * 0.2}s ease-in-out infinite` }} />
-              ))}
-            </div>
-            <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>Team notified</span>
-          </div>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.22)" }}>Our team has been notified</span>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Animated Submit Button ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Animated Submit Button
+// ─────────────────────────────────────────────────────────────────────────────
 type BtnPhase = "idle" | "loading" | "sending";
 
 function SubmitButton({ phase }: { phase: BtnPhase }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl" style={{
-      height: 52,
+    <div style={{
+      position: "relative", width: "100%", height: 52,
+      borderRadius: 16, overflow: "hidden",
       background: "linear-gradient(135deg,#7c3aed,#4f46e5)",
-      boxShadow: "0 4px 20px rgba(124,58,237,0.35)",
-      transition: "width 0.5s cubic-bezier(0.4,0,0.2,1)",
+      boxShadow: "0 4px 24px rgba(124,58,237,0.4)",
+      transition: "opacity 0.3s ease",
+      cursor: phase !== "idle" ? "default" : "pointer",
     }}>
-      <style>{`
-        @keyframes docSlide {
-          0%   { transform: translateX(-80px) rotate(-8deg); opacity:0; }
-          15%  { opacity:1; }
-          85%  { opacity:1; }
-          100% { transform: translateX(calc(100vw)) rotate(4deg); opacity:0; }
-        }
-        @keyframes trackReveal { from{width:0} to{width:100%} }
-        @keyframes idlePulse { 0%,100%{opacity:1} 50%{opacity:0.85} }
-      `}</style>
+      <style>{STYLES}</style>
 
-      {/* Idle label */}
-      <div className="absolute inset-0 flex items-center justify-center"
-        style={{
-          transition: "opacity 0.3s",
-          opacity: phase === "idle" ? 1 : 0,
-          pointerEvents: "none",
-        }}>
-        <span className="text-sm font-bold text-white">Submit Application →</span>
+      {/* Idle */}
+      <div style={{
+        position: "absolute", inset: 0, display: "flex",
+        alignItems: "center", justifyContent: "center",
+        transition: "opacity 0.25s ease",
+        opacity: phase === "idle" ? 1 : 0,
+        pointerEvents: "none",
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "white", letterSpacing: "0.01em" }}>
+          Submit Application →
+        </span>
       </div>
 
-      {/* Loading state */}
-      {phase === "loading" && (
-        <div className="absolute inset-0 flex items-center justify-center gap-2">
-          <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-          <span className="text-sm font-semibold text-white opacity-80">Sending...</span>
+      {/* Loading */}
+      <div style={{
+        position: "absolute", inset: 0, display: "flex",
+        alignItems: "center", justifyContent: "center", gap: 8,
+        transition: "opacity 0.25s ease",
+        opacity: phase === "loading" ? 1 : 0,
+        pointerEvents: "none",
+      }}>
+        <div style={{
+          width: 16, height: 16, borderRadius: "50%",
+          border: "2.5px solid rgba(255,255,255,0.3)",
+          borderTopColor: "white",
+          animation: phase === "loading" ? "spin 0.75s linear infinite" : "none",
+        }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>Sending…</span>
+      </div>
+
+      {/* Sending — CV travels across */}
+      {phase === "sending" && (
+        <div style={{ position: "absolute", inset: 0, overflow: "hidden", animation: "trackAppear 0.3s ease" }}>
+          {/* Track line */}
+          <div style={{
+            position: "absolute", top: "50%", left: 0, right: 0, height: 1.5,
+            background: "rgba(255,255,255,0.18)", transform: "translateY(-50%)",
+          }} />
+          {/* Dashes */}
+          {[15,30,45,60,75].map((pct) => (
+            <div key={pct} style={{
+              position: "absolute", top: "50%", left: `${pct}%`,
+              transform: "translateY(-50%)",
+              width: 10, height: 1.5, borderRadius: 1,
+              background: "rgba(255,255,255,0.12)",
+            }} />
+          ))}
+          {/* CV chip travelling */}
+          <div style={{
+            position: "absolute", top: "50%", transform: "translateY(-50%)",
+            animation: "cvTravel 1.0s cubic-bezier(0.4,0,0.2,1) forwards",
+          }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "5px 10px", borderRadius: 10,
+              background: "rgba(255,255,255,0.18)",
+              backdropFilter: "blur(8px)",
+              boxShadow: "0 2px 12px rgba(0,0,0,0.2)",
+            }}>
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24"
+                stroke="white" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "white" }}>CV</span>
+            </div>
+          </div>
+          {/* Inbox on right */}
+          <div style={{
+            position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+            animation: "inboxPop 0.4s 0.85s cubic-bezier(0.34,1.56,0.64,1) both",
+          }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 10,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: "rgba(52,211,153,0.2)",
+              border: "1.5px solid rgba(52,211,153,0.5)",
+              boxShadow: "0 0 16px rgba(52,211,153,0.3)",
+            }}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+              </svg>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Sending state — CV flies across */}
-      {phase === "sending" && (
-        <div className="absolute inset-0 flex items-center overflow-hidden">
-          {/* Track / road line */}
-          <div style={{
-            position: "absolute", top: "50%", left: 0, height: 2,
-            background: "rgba(255,255,255,0.2)", borderRadius: 1,
-            animation: "trackReveal 0.3s ease forwards",
-            width: "100%",
-          }} />
-          {/* Dashes on track */}
-          {[20, 35, 50, 65, 80].map((pct) => (
-            <div key={pct} style={{
-              position: "absolute", top: "50%", left: `${pct}%`,
-              width: 8, height: 2, background: "rgba(255,255,255,0.15)",
-              borderRadius: 1, transform: "translateY(-50%)",
-            }} />
-          ))}
-          {/* Flying CV document */}
-          <div style={{ animation: "docSlide 1.1s 0.1s cubic-bezier(0.4,0,0.6,1) forwards", position: "absolute" }}>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-              style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(4px)" }}>
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-              </svg>
-              <span className="text-xs font-bold text-white">CV</span>
-            </div>
-          </div>
-          {/* Inbox icon on right */}
-          <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: "rgba(52,211,153,0.2)", border: "1px solid rgba(52,211,153,0.4)" }}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-      )}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-// ── Apply Form ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Apply Form
+// ─────────────────────────────────────────────────────────────────────────────
 export default function ApplyForm() {
   const [form, setForm] = useState({
     name: "", email: "", phone: "", position: "", linkedin: "", coverLetter: "",
@@ -280,6 +398,7 @@ export default function ApplyForm() {
   const [cv, setCv]           = useState<File | null>(null);
   const [cvError, setCvError] = useState("");
   const [btnPhase, setBtnPhase] = useState<BtnPhase>("idle");
+  const [formVisible, setFormVisible] = useState(true);
   const [done, setDone]       = useState(false);
   const [error, setError]     = useState("");
   const fileRef               = useRef<HTMLInputElement>(null);
@@ -333,13 +452,18 @@ export default function ApplyForm() {
     const res = await fetch("/api/applications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, cvFileName: cv.name, cvFileType: cv.type, cvFileData: base64, cvFileSize: cv.size }),
+      body: JSON.stringify({
+        ...form, cvFileName: cv.name, cvFileType: cv.type,
+        cvFileData: base64, cvFileSize: cv.size,
+      }),
     });
 
     if (res.ok) {
-      // Play the sending animation before showing success
       setBtnPhase("sending");
-      setTimeout(() => setDone(true), 1400);
+      // Form fades out while CV travels
+      setTimeout(() => setFormVisible(false), 300);
+      // Show success screen after sending animation
+      setTimeout(() => setDone(true), 1300);
     } else {
       setBtnPhase("idle");
       const data = await res.json();
@@ -352,7 +476,13 @@ export default function ApplyForm() {
   return (
     <div className="min-h-screen py-10 px-4"
       style={{ background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)" }}>
-      <div className="max-w-xl mx-auto">
+      <style>{STYLES}</style>
+      <div className="max-w-xl mx-auto" style={{
+        transition: "opacity 0.5s ease, transform 0.5s ease",
+        opacity: formVisible ? 1 : 0,
+        transform: formVisible ? "translateY(0)" : "translateY(-16px)",
+      }}>
+        {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
             style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
@@ -366,8 +496,8 @@ export default function ApplyForm() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit}
-          className="rounded-3xl p-6 md:p-8 space-y-5"
+        {/* Form card */}
+        <form onSubmit={handleSubmit} className="rounded-3xl p-6 md:p-8 space-y-5"
           style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
