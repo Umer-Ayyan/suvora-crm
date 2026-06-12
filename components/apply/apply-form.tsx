@@ -16,72 +16,41 @@ function isValidUrl(val: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Global styles (injected once)
+// Global styles
 // ─────────────────────────────────────────────────────────────────────────────
 const STYLES = `
-  @keyframes pageFadeIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
+  @keyframes fadeIn    { from{opacity:0} to{opacity:1} }
+  @keyframes riseUp    { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes popIn     { from{opacity:0;transform:scale(0.7)} to{opacity:1;transform:scale(1)} }
+  @keyframes checkDraw { from{stroke-dashoffset:56} to{stroke-dashoffset:0} }
+  @keyframes ringPulse { 0%,100%{transform:scale(1);opacity:0.15} 50%{transform:scale(1.18);opacity:0} }
+  @keyframes planefly  {
+    0%   { transform: translate(0,0) rotate(0deg); opacity:1; }
+    40%  { transform: translate(80px,-60px) rotate(20deg); opacity:1; }
+    70%  { transform: translate(180px,-110px) rotate(15deg); opacity:0.5; }
+    100% { transform: translate(260px,-140px) rotate(10deg); opacity:0; }
   }
-  @keyframes sceneRise {
-    from { opacity: 0; transform: translateY(24px) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0)    scale(1);    }
+  @keyframes dotBounce {
+    0%,80%,100%{ transform:translateY(0); opacity:0.4; }
+    40%        { transform:translateY(-5px); opacity:1; }
   }
-  @keyframes cvFloat {
-    0%   { transform: translateY(0px)    rotate(-5deg) scale(1);    opacity: 1; }
-    50%  { transform: translateY(-130px) rotate(1deg)  scale(0.88); opacity: 1; }
-    80%  { transform: translateY(-220px) rotate(-1deg) scale(0.72); opacity: 0.6; }
-    100% { transform: translateY(-260px) rotate(0deg)  scale(0.55); opacity: 0; }
+  @keyframes softGlow {
+    0%,100%{ opacity:0.4; }
+    50%    { opacity:0.8; }
   }
-  @keyframes trayReceive {
-    0%,100% { transform: translateY(0) scale(1); }
-    30%     { transform: translateY(3px) scale(1.04); }
-    60%     { transform: translateY(-2px) scale(0.98); }
-    80%     { transform: translateY(1px) scale(1.01); }
-  }
-  @keyframes stampIn {
-    0%   { opacity: 0; transform: rotate(15deg) scale(0.4) translateY(-20px); }
-    55%  { opacity: 1; transform: rotate(10deg) scale(1.08) translateY(2px); }
-    75%  { transform: rotate(11deg) scale(0.97) translateY(0); }
-    100% { opacity: 1; transform: rotate(11deg) scale(1)    translateY(0); }
-  }
-  @keyframes rowIn {
-    from { opacity: 0; transform: translateX(-12px); }
-    to   { opacity: 1; transform: translateX(0); }
-  }
-  @keyframes softPulse {
-    0%,100% { opacity: 0.5; transform: scale(0.8); }
-    50%     { opacity: 1;   transform: scale(1);   }
-  }
-  @keyframes glowBreath {
-    0%,100% { opacity: 0.5; }
-    50%     { opacity: 1; }
-  }
-
-  /* Button animation */
-  @keyframes btnShrink {
-    from { max-width: 100%; }
-    to   { max-width: 100%; }
-  }
-  @keyframes trackAppear {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
+  @keyframes trackAppear { from{opacity:0} to{opacity:1} }
   @keyframes cvTravel {
-    0%   { left: -60px; opacity: 0; }
-    8%   { opacity: 1; }
-    88%  { opacity: 1; }
-    100% { left: calc(100% + 20px); opacity: 0; }
+    0%   { left:-60px; opacity:0; }
+    8%   { opacity:1; }
+    88%  { opacity:1; }
+    100% { left:calc(100% + 20px); opacity:0; }
   }
   @keyframes inboxPop {
-    0%,100% { transform: translateY(-50%) scale(1); }
-    40%     { transform: translateY(-50%) scale(1.18); }
-    70%     { transform: translateY(-50%) scale(0.95); }
+    0%,100%{ transform:translateY(-50%) scale(1); }
+    40%    { transform:translateY(-50%) scale(1.2); }
+    70%    { transform:translateY(-50%) scale(0.94); }
   }
-  @keyframes formFadeOut {
-    from { opacity: 1; transform: translateY(0); }
-    to   { opacity: 0; transform: translateY(-12px); }
-  }
+  @keyframes spin { to{transform:rotate(360deg)} }
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,178 +60,152 @@ function SuccessScreen({ name }: { name: string }) {
   return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      padding: 24, background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)",
-      animation: "pageFadeIn 0.6s ease both",
+      padding: "24px 16px",
+      background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)",
+      animation: "fadeIn 0.5s ease both",
     }}>
       <style>{STYLES}</style>
 
-      {/* Ambient glow */}
+      {/* Soft radial glow */}
       <div style={{
         position: "fixed", inset: 0, pointerEvents: "none",
-        background: "radial-gradient(ellipse 60% 50% at 50% 50%, rgba(124,58,237,0.1) 0%, transparent 70%)",
-        animation: "glowBreath 3s ease-in-out infinite",
+        background: "radial-gradient(ellipse 55% 45% at 50% 45%, rgba(124,58,237,0.12) 0%, transparent 70%)",
+        animation: "softGlow 4s ease-in-out infinite",
       }} />
 
-      <div style={{ position: "relative", width: "100%", maxWidth: 360, textAlign: "center",
-        animation: "sceneRise 0.7s cubic-bezier(0.22,1,0.36,1) both" }}>
+      <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 380, textAlign: "center" }}>
 
-        {/* ── Desk scene ── */}
-        <div style={{ position: "relative", height: 200, marginBottom: 32 }}>
-
-          {/* Background glow behind inbox */}
+        {/* ── Check icon ── */}
+        <div style={{ position: "relative", width: 96, height: 96, margin: "0 auto 28px" }}>
+          {/* Outer pulse ring */}
           <div style={{
-            position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-            width: 140, height: 80, borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(52,211,153,0.15) 0%, transparent 70%)",
-            animation: "glowBreath 2s 1.6s ease-in-out infinite",
+            position: "absolute", inset: -12, borderRadius: "50%",
+            background: "rgba(124,58,237,0.15)",
+            animation: "ringPulse 2s 0.6s ease-out infinite",
           }} />
-
-          {/* Inbox tray */}
+          {/* Middle ring */}
           <div style={{
-            position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)",
-            animation: "trayReceive 0.5s 1.55s cubic-bezier(0.22,1,0.36,1) both",
-          }}>
-            {/* Label */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginBottom: 6 }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399",
-                boxShadow: "0 0 8px #34d399", animation: "softPulse 2s ease-in-out infinite" }} />
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.15em",
-                color: "#34d399", textTransform: "uppercase" }}>Inbox</span>
-            </div>
-            {/* Tray */}
-            <div style={{
-              width: 110, height: 64, borderRadius: 14,
-              background: "rgba(52,211,153,0.07)",
-              border: "1.5px solid rgba(52,211,153,0.3)",
-              position: "relative", overflow: "hidden",
-            }}>
-              {/* Slot */}
-              <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-                width: "55%", height: 3, background: "rgba(52,211,153,0.5)",
-                borderRadius: "0 0 3px 3px" }} />
-              {/* Stacked papers */}
-              {[3, 1, -1].map((rot, i) => (
-                <div key={i} style={{
-                  position: "absolute",
-                  bottom: 6 + i * 2, left: "50%",
-                  transform: `translateX(-50%) rotate(${rot}deg)`,
-                  width: 64, height: 36, borderRadius: 6,
-                  background: `rgba(255,255,255,${0.05 - i * 0.01})`,
-                  border: `1px solid rgba(255,255,255,${0.08 - i * 0.02})`,
-                }} />
-              ))}
-            </div>
-          </div>
-
-          {/* RECEIVED stamp */}
-          <div style={{
-            position: "absolute", top: 20, right: 8,
-            animation: "stampIn 0.55s 1.85s cubic-bezier(0.34,1.56,0.64,1) both",
-            opacity: 0,
-          }}>
-            <div style={{
-              border: "2px solid rgba(52,211,153,0.7)", borderRadius: 8,
-              padding: "4px 10px", transform: "rotate(11deg)",
-              background: "rgba(52,211,153,0.06)",
-              boxShadow: "0 0 16px rgba(52,211,153,0.2)",
-            }}>
-              <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.2em",
-                color: "#34d399", textTransform: "uppercase" }}>Received</span>
-            </div>
-          </div>
-
-          {/* Floating CV */}
-          <div style={{
-            position: "absolute", bottom: 44, left: "50%",
-            transform: "translateX(-50%)",
-            animation: "cvFloat 1.3s 0.2s cubic-bezier(0.4,0,0.2,1) forwards",
-          }}>
-            <div style={{
-              width: 68, height: 88, borderRadius: 10, background: "white",
-              boxShadow: "0 12px 40px rgba(0,0,0,0.5), 0 2px 8px rgba(124,58,237,0.2)",
-              padding: "10px 10px 8px", overflow: "hidden",
-            }}>
-              <div style={{ height: 5, borderRadius: 3, background: "#7c3aed", marginBottom: 6, width: "65%" }} />
-              {[90, 75, 60, 85, 70, 80, 55].map((w, i) => (
-                <div key={i} style={{
-                  height: 2.5, borderRadius: 2,
-                  background: i < 3 ? "#e5e7eb" : "#f3f4f6",
-                  marginBottom: 3.5, width: `${w}%`,
-                }} />
-              ))}
-            </div>
-          </div>
-
-          {/* Desk surface */}
-          <div style={{
-            position: "absolute", bottom: 0, left: -20, right: -20, height: 10,
-            background: "linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))",
-            borderTop: "1px solid rgba(255,255,255,0.08)",
+            position: "absolute", inset: -4, borderRadius: "50%",
+            background: "rgba(124,58,237,0.1)",
+            animation: "ringPulse 2s 0.3s ease-out infinite",
           }} />
+          {/* Circle */}
+          <div style={{
+            width: 96, height: 96, borderRadius: "50%",
+            background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+            boxShadow: "0 0 0 0 rgba(124,58,237,0.4), 0 8px 32px rgba(124,58,237,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            animation: "popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both",
+          }}>
+            {/* Animated checkmark */}
+            <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+              <polyline
+                points="10,22 18,32 34,14"
+                stroke="white" strokeWidth="3.5"
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{
+                  strokeDasharray: 56,
+                  strokeDashoffset: 56,
+                  animation: "checkDraw 0.5s 0.4s cubic-bezier(0.22,1,0.36,1) forwards",
+                }}
+              />
+            </svg>
+          </div>
         </div>
 
-        {/* Text */}
-        <h2 style={{ fontSize: 26, fontWeight: 900, color: "white", marginBottom: 6, letterSpacing: "-0.02em",
-          animation: "rowIn 0.6s 2.1s ease both", opacity: 0 }}>
-          Application Received!
+        {/* ── Paper plane flying away ── */}
+        <div style={{
+          position: "absolute", top: 20, left: "55%",
+          animation: "planefly 1.2s 0.1s cubic-bezier(0.4,0,0.2,1) forwards",
+          pointerEvents: "none",
+        }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"
+              stroke="rgba(167,139,250,0.8)" strokeWidth="1.8"
+              strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+
+        {/* ── Title ── */}
+        <h2 style={{
+          fontSize: 28, fontWeight: 900, color: "white",
+          letterSpacing: "-0.02em", marginBottom: 8,
+          animation: "riseUp 0.55s 0.5s cubic-bezier(0.22,1,0.36,1) both", opacity: 0,
+        }}>
+          Application Sent!
         </h2>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", marginBottom: 24, lineHeight: 1.6,
-          animation: "rowIn 0.6s 2.3s ease both", opacity: 0 }}>
-          Hey <span style={{ color: "#a78bfa", fontWeight: 600 }}>{name}</span>,
-          your CV just landed in our inbox.
+
+        <p style={{
+          fontSize: 15, marginBottom: 28, lineHeight: 1.6,
+          color: "rgba(255,255,255,0.45)",
+          animation: "riseUp 0.55s 0.65s cubic-bezier(0.22,1,0.36,1) both", opacity: 0,
+        }}>
+          Hey <span style={{ color: "#c4b5fd", fontWeight: 700 }}>{name}</span>,
+          your CV is on its way to our team.
         </p>
 
-        {/* Timeline */}
+        {/* ── Timeline card ── */}
         <div style={{
-          background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-          borderRadius: 20, padding: "16px 18px",
-          animation: "rowIn 0.6s 2.5s ease both", opacity: 0,
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          borderRadius: 20, padding: "20px 20px",
+          animation: "riseUp 0.55s 0.8s cubic-bezier(0.22,1,0.36,1) both", opacity: 0,
         }}>
           {[
-            { text: "CV submitted successfully", done: true,  delay: "2.7s" },
-            { text: "Team notified, under review",  done: false, delay: "2.9s" },
-            { text: "We'll reach out via email",    done: false, delay: "3.1s" },
+            { icon: "✓", label: "Application received",      sub: "Just now",          done: true,  d: "0.95s" },
+            { icon: "→", label: "CV under review by team",   sub: "In progress",       done: false, d: "1.1s"  },
+            { icon: "✉", label: "We'll reach out via email", sub: "Within a few days", done: false, d: "1.25s" },
           ].map((step, i) => (
             <div key={i} style={{
-              display: "flex", alignItems: "center", gap: 12,
-              marginBottom: i < 2 ? 14 : 0,
-              animation: `rowIn 0.5s ${step.delay} ease both`, opacity: 0,
+              display: "flex", alignItems: "center", gap: 14,
+              paddingBottom: i < 2 ? 16 : 0,
+              marginBottom: i < 2 ? 16 : 0,
+              borderBottom: i < 2 ? "1px solid rgba(255,255,255,0.05)" : "none",
+              animation: `riseUp 0.45s ${step.d} ease both`, opacity: 0,
             }}>
+              {/* Icon */}
               <div style={{
-                width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                width: 36, height: 36, borderRadius: 12, flexShrink: 0,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                background: step.done ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)",
-                border: `1.5px solid ${step.done ? "#34d399" : "rgba(255,255,255,0.1)"}`,
-                transition: "all 0.3s ease",
+                background: step.done ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
+                border: `1.5px solid ${step.done ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.08)"}`,
               }}>
-                {step.done
-                  ? <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-                    </svg>
-                  : <div style={{ width: 6, height: 6, borderRadius: "50%",
-                      background: "rgba(255,255,255,0.15)" }} />
-                }
+                <span style={{ fontSize: 13, color: step.done ? "#34d399" : "rgba(255,255,255,0.25)" }}>
+                  {step.icon}
+                </span>
               </div>
-              <span style={{
-                fontSize: 13, lineHeight: 1.4,
-                color: step.done ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.3)",
-              }}>{step.text}</span>
+              {/* Text */}
+              <div style={{ flex: 1, textAlign: "left" }}>
+                <p style={{
+                  fontSize: 13, fontWeight: 600, marginBottom: 2,
+                  color: step.done ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.35)",
+                }}>{step.label}</p>
+                <p style={{ fontSize: 11, color: step.done ? "#34d399" : "rgba(255,255,255,0.2)" }}>
+                  {step.sub}
+                </p>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Typing indicator */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 20,
-          animation: "rowIn 0.6s 3.4s ease both", opacity: 0 }}>
-          <div style={{ display: "flex", gap: 4 }}>
+        {/* ── Footer dots ── */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          marginTop: 24,
+          animation: "riseUp 0.45s 1.4s ease both", opacity: 0,
+        }}>
+          <div style={{ display: "flex", gap: 5 }}>
             {[0,1,2].map((i) => (
               <div key={i} style={{
-                width: 5, height: 5, borderRadius: "50%", background: "#7c3aed",
-                animation: `softPulse 1.2s ${i * 0.18}s ease-in-out infinite`,
+                width: 5, height: 5, borderRadius: "50%",
+                background: "rgba(124,58,237,0.6)",
+                animation: `dotBounce 1.3s ${i * 0.15}s ease-in-out infinite`,
               }} />
             ))}
           </div>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.22)" }}>Our team has been notified</span>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>
+            Team has been notified
+          </span>
         </div>
       </div>
     </div>
