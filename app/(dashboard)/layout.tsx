@@ -61,16 +61,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const permissions = (session?.user as any)?.permissions as Record<string, boolean> | undefined;
   const customRoleName = (session?.user as any)?.customRoleName as string | undefined;
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [newAppCount, setNewAppCount] = useState(0);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSidebarOpen(false);
+    if (pathname.startsWith("/applications")) setNewAppCount(0);
   }, [pathname]);
 
   useEffect(() => {
     document.body.style.overflow = sidebarOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [sidebarOpen]);
+
+  // Fetch new applications count for admin/manager
+  useEffect(() => {
+    if (!["admin", "manager"].includes(role)) return;
+    async function fetchCount() {
+      try {
+        const res = await fetch("/api/applications?status=new");
+        if (res.ok) {
+          const data = await res.json();
+          setNewAppCount(data.length);
+        }
+      } catch {}
+    }
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000); // refresh every 1 min
+    return () => clearInterval(interval);
+  }, [role]);
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -153,7 +171,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 }`}
               >
                 <NavIcon d={item.icon} />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.href === "/applications" && newAppCount > 0 && (
+                  <span className="text-xs font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", color: "white", minWidth: 20, textAlign: "center" }}>
+                    {newAppCount > 99 ? "99+" : newAppCount}
+                  </span>
+                )}
               </Link>
             ))}
           </>
