@@ -193,20 +193,12 @@ function SuccessScreen({ name }: { name: string }) {
             </div>
           </div>
 
-          {/* Desk */}
+          {/* Desk surface */}
           <div style={{
-            position: "absolute", bottom: 0, left: 0, right: 0, height: 44,
-            background: "linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))",
-            border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16,
-          }}>
-            {/* Pen */}
-            <div style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(-50%) rotate(18deg)",
-              width: 3, height: 20, borderRadius: 2, background: "rgba(167,139,250,0.45)" }} />
-            {/* Mug */}
-            <div style={{ position: "absolute", right: 28, top: "50%", transform: "translateY(-50%)",
-              width: 12, height: 14, borderRadius: "0 0 4px 4px",
-              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }} />
-          </div>
+            position: "absolute", bottom: 0, left: -20, right: -20, height: 10,
+            background: "linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))",
+            borderTop: "1px solid rgba(255,255,255,0.08)",
+          }} />
         </div>
 
         {/* Text */}
