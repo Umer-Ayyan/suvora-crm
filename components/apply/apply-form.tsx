@@ -69,6 +69,7 @@ function SuccessScreen({ name }: { name: string }) {
     }
 
     function animate() {
+      if (!canvas) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       let alive = false;
       for (const p of particles) {
