@@ -293,6 +293,31 @@ model ChatMessageRead {
   @@index([userId])
 }
 
+// ─── JOB APPLICATION ───────────────────────────────────────────────────────
+model JobApplication {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  phone        String?
+  position     String
+  linkedin     String?
+  coverLetter  String?
+  cvFileName   String
+  cvFileType   String
+  cvFileData   String   // base64
+  cvFileSize   Int
+  status       String   @default("new") // new | reviewing | shortlisted | rejected | hired
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt @default(now())
+
+  reviewedById String?
+  reviewedBy   User?    @relation("AppReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdAt])
+}
+
 // ─── CUSTOM ROLE ───────────────────────────────────────────────────────────
 model CustomRole {
   id          String   @id @default(cuid())
@@ -356,7 +381,8 @@ model User {
   messageReads      ChatMessageRead[]
   messageHides      ChatMessageHide[]
   leaveRequests     LeaveRequest[]
-  leaveReviews      LeaveRequest[] @relation("LeaveReviewer")
+  leaveReviews      LeaveRequest[]    @relation("LeaveReviewer")
+  appReviews        JobApplication[]  @relation("AppReviewer")
 }
 
 // ─── EMPLOYEE DOCUMENT ─────────────────────────────────────────────────────
