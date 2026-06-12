@@ -1,25 +1,246 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
-const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_SIZE = 5 * 1024 * 1024;
 
-// Validation helpers
 function isValidPhone(val: string) {
-  // Allow digits, spaces, +, -, (, ) — at least 7 digits total
   const digits = val.replace(/\D/g, "");
   return /^[+\d][\d\s\-().]{5,19}$/.test(val) && digits.length >= 7;
 }
-
 function isValidUrl(val: string) {
   try {
     const url = new URL(val.startsWith("http") ? val : `https://${val}`);
     return url.hostname.includes(".");
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
+// ── Confetti particle ─────────────────────────────────────────────────────────
+interface Particle {
+  x: number; y: number; vx: number; vy: number;
+  color: string; size: number; rotation: number; rotSpeed: number;
+  opacity: number; shape: "rect" | "circle" | "star";
+}
+
+function SuccessScreen({ name }: { name: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef   = useRef<number>(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d")!;
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const COLORS = ["#7c3aed","#4f46e5","#a78bfa","#c4b5fd","#34d399","#60a5fa","#f472b6","#facc15"];
+    const particles: Particle[] = [];
+
+    // Burst from center
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    for (let i = 0; i < 160; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 4 + Math.random() * 14;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - Math.random() * 4,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        size: 4 + Math.random() * 8,
+        rotation: Math.random() * 360,
+        rotSpeed: (Math.random() - 0.5) * 10,
+        opacity: 1,
+        shape: (["rect","circle","star"] as const)[Math.floor(Math.random() * 3)],
+      });
+    }
+
+    function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+        const b = ((i * 4 + 2) * Math.PI) / 5 - Math.PI / 2;
+        if (i === 0) ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a));
+        else ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
+        ctx.lineTo(x + (r / 2) * Math.cos(b), y + (r / 2) * Math.sin(b));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
+      for (const p of particles) {
+        p.x  += p.vx;
+        p.y  += p.vy;
+        p.vy += 0.35;          // gravity
+        p.vx *= 0.98;          // air drag
+        p.rotation += p.rotSpeed;
+        p.opacity  -= 0.012;
+        if (p.opacity <= 0) continue;
+        alive = true;
+        ctx.save();
+        ctx.globalAlpha = p.opacity;
+        ctx.fillStyle   = p.color;
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        if (p.shape === "circle") {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (p.shape === "star") {
+          drawStar(ctx, 0, 0, p.size / 2);
+        } else {
+          ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+        }
+        ctx.restore();
+      }
+      if (alive) animRef.current = requestAnimationFrame(animate);
+    }
+
+    animRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animRef.current);
+  }, []);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden"
+      style={{ background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)" }}>
+
+      {/* Canvas confetti */}
+      <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }} />
+
+      {/* Glow orb behind card */}
+      <div className="absolute rounded-full pointer-events-none"
+        style={{
+          width: 500, height: 500,
+          background: "radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%)",
+          top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+          animation: "pulse 2s ease-in-out infinite",
+        }} />
+
+      {/* Card */}
+      <div className="relative text-center max-w-md w-full"
+        style={{ zIndex: 1, animation: "successPop 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards" }}>
+
+        {/* Checkmark ring */}
+        <div className="relative mx-auto mb-8" style={{ width: 120, height: 120 }}>
+          {/* Rotating ring */}
+          <div className="absolute inset-0 rounded-full"
+            style={{
+              background: "conic-gradient(from 0deg, #7c3aed, #4f46e5, #a78bfa, #34d399, #7c3aed)",
+              animation: "spin 3s linear infinite",
+              padding: 3,
+            }}>
+            <div className="w-full h-full rounded-full"
+              style={{ background: "#0d0d1a" }} />
+          </div>
+          {/* Inner filled circle */}
+          <div className="absolute inset-2 rounded-full flex items-center justify-center"
+            style={{
+              background: "linear-gradient(135deg,#7c3aed,#4f46e5)",
+              boxShadow: "0 0 40px rgba(124,58,237,0.6), 0 0 80px rgba(124,58,237,0.3)",
+              animation: "glowPulse 2s ease-in-out infinite",
+            }}>
+            {/* Animated check */}
+            <svg viewBox="0 0 52 52" style={{ width: 44, height: 44 }}>
+              <polyline
+                fill="none" stroke="white" strokeWidth={4}
+                strokeLinecap="round" strokeLinejoin="round"
+                points="14,26 22,34 38,18"
+                style={{ strokeDasharray: 48, strokeDashoffset: 0, animation: "drawCheck 0.5s 0.3s ease forwards" }}
+              />
+            </svg>
+          </div>
+        </div>
+
+        {/* Floating sparkles */}
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="absolute pointer-events-none"
+            style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: ["#7c3aed","#a78bfa","#34d399","#60a5fa","#f472b6","#facc15"][i],
+              top: `${[10,20,5,15,8,18][i]}%`,
+              left: `${[10,80,50,25,70,40][i]}%`,
+              animation: `floatSparkle ${1.5 + i * 0.3}s ease-in-out ${i * 0.2}s infinite alternate`,
+              boxShadow: `0 0 8px ${["#7c3aed","#a78bfa","#34d399","#60a5fa","#f472b6","#facc15"][i]}`,
+            }} />
+        ))}
+
+        {/* Text content */}
+        <div style={{ animation: "fadeSlideUp 0.5s 0.4s ease both" }}>
+          <h2 className="text-3xl font-black text-white mb-2 tracking-tight">
+            Application Sent! 🎉
+          </h2>
+          <p className="text-lg font-semibold mb-1" style={{
+            background: "linear-gradient(90deg,#a78bfa,#60a5fa,#34d399)",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          }}>
+            Hey {name}, you&apos;re awesome!
+          </p>
+        </div>
+
+        <div style={{ animation: "fadeSlideUp 0.5s 0.6s ease both", opacity: 0 }}>
+          <p className="text-base mt-3 mb-6" style={{ color: "rgba(255,255,255,0.55)", lineHeight: 1.7 }}>
+            We&apos;ve received your application and our team will review your profile carefully.
+            Expect to hear from us via email soon.
+          </p>
+
+          {/* Divider with dots */}
+          <div className="flex items-center justify-center gap-2 mb-6">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="rounded-full"
+                style={{
+                  width: 6, height: 6,
+                  background: i === 1 ? "#7c3aed" : "rgba(255,255,255,0.15)",
+                  animation: `dotBounce 1.2s ${i * 0.2}s ease-in-out infinite`,
+                }} />
+            ))}
+          </div>
+
+          <p className="text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>
+            Your information is kept private and used only for recruitment.
+          </p>
+        </div>
+      </div>
+
+      {/* CSS keyframes */}
+      <style>{`
+        @keyframes successPop {
+          from { opacity: 0; transform: scale(0.7) translateY(30px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes glowPulse {
+          0%,100% { box-shadow: 0 0 40px rgba(124,58,237,0.6), 0 0 80px rgba(124,58,237,0.3); }
+          50%      { box-shadow: 0 0 60px rgba(124,58,237,0.9), 0 0 120px rgba(124,58,237,0.5); }
+        }
+        @keyframes drawCheck {
+          from { stroke-dashoffset: 48; }
+          to   { stroke-dashoffset: 0; }
+        }
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes floatSparkle {
+          from { transform: translateY(0) scale(1); opacity: 0.6; }
+          to   { transform: translateY(-20px) scale(1.4); opacity: 1; }
+        }
+        @keyframes dotBounce {
+          0%,100% { transform: translateY(0); }
+          50%      { transform: translateY(-6px); }
+        }
+        @keyframes pulse {
+          0%,100% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+          50%      { transform: translate(-50%,-50%) scale(1.1); opacity: 0.7; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ── Apply Form ────────────────────────────────────────────────────────────────
 export default function ApplyForm() {
   const [form, setForm] = useState({
     name: "", email: "", phone: "", position: "", linkedin: "", coverLetter: "",
@@ -35,19 +256,16 @@ export default function ApplyForm() {
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
-    // Clear error on change
     if (fieldErrors[name]) setFieldErrors((prev) => ({ ...prev, [name]: "" }));
   }
 
   function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
     const { name, value } = e.target;
     if (!value.trim()) return;
-    if (name === "phone" && !isValidPhone(value)) {
+    if (name === "phone" && !isValidPhone(value))
       setFieldErrors((prev) => ({ ...prev, phone: "Enter a valid phone number (e.g. +92 300 1234567)" }));
-    }
-    if (name === "linkedin" && !isValidUrl(value)) {
+    if (name === "linkedin" && !isValidUrl(value))
       setFieldErrors((prev) => ({ ...prev, linkedin: "Enter a valid URL (e.g. https://linkedin.com/in/yourname)" }));
-    }
   }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -55,7 +273,7 @@ export default function ApplyForm() {
     setCvError("");
     if (!file) return;
     if (file.size > MAX_SIZE) { setCvError("File must be under 5 MB"); return; }
-    const allowed = ["application/pdf", "application/msword",
+    const allowed = ["application/pdf","application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     if (!allowed.includes(file.type)) { setCvError("Only PDF or Word files allowed"); return; }
     setCv(file);
@@ -63,79 +281,40 @@ export default function ApplyForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
-    // Validate before submit
     const errors: Record<string, string> = {};
-    if (form.phone.trim() && !isValidPhone(form.phone)) {
+    if (form.phone.trim() && !isValidPhone(form.phone))
       errors.phone = "Enter a valid phone number (e.g. +92 300 1234567)";
-    }
-    if (form.linkedin.trim() && !isValidUrl(form.linkedin)) {
+    if (form.linkedin.trim() && !isValidUrl(form.linkedin))
       errors.linkedin = "Enter a valid URL (e.g. https://linkedin.com/in/yourname)";
-    }
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     if (!cv) { setCvError("Please upload your CV"); return; }
 
-    setSubmitting(true);
-    setError("");
-
-    // Read CV as base64
+    setSubmitting(true); setError("");
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve((reader.result as string).split(",")[1]);
       reader.onerror = reject;
       reader.readAsDataURL(cv);
     });
-
     const res = await fetch("/api/applications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        cvFileName: cv.name,
-        cvFileType: cv.type,
-        cvFileData: base64,
-        cvFileSize: cv.size,
-      }),
+      body: JSON.stringify({ ...form, cvFileName: cv.name, cvFileType: cv.type, cvFileData: base64, cvFileSize: cv.size }),
     });
-
     setSubmitting(false);
-    if (res.ok) {
-      setDone(true);
-    } else {
+    if (res.ok) { setDone(true); }
+    else {
       const data = await res.json();
       setError(data.error || "Something went wrong. Please try again.");
     }
   }
 
-  // ── Success screen ──
-  if (done) return (
-    <div className="min-h-screen flex items-center justify-center p-6"
-      style={{ background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)" }}>
-      <div className="text-center max-w-md">
-        <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
-          style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", boxShadow: "0 0 60px rgba(124,58,237,0.4)" }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} style={{ width: 36, height: 36 }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-        <h2 className="text-2xl font-bold text-white mb-3">Application Submitted!</h2>
-        <p className="text-base mb-2" style={{ color: "rgba(255,255,255,0.6)" }}>
-          Thank you <span className="text-violet-400 font-semibold">{form.name}</span>, we&apos;ve received your application.
-        </p>
-        <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
-          Our team will review your profile and get back to you via email.
-        </p>
-      </div>
-    </div>
-  );
+  if (done) return <SuccessScreen name={form.name} />;
 
-  // ── Form ──
   return (
     <div className="min-h-screen py-10 px-4"
       style={{ background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)" }}>
       <div className="max-w-xl mx-auto">
-
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
             style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
@@ -149,29 +328,23 @@ export default function ApplyForm() {
           </p>
         </div>
 
-        {/* Card */}
         <form onSubmit={handleSubmit}
           className="rounded-3xl p-6 md:p-8 space-y-5"
           style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}>
 
-          {/* Name + Email */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Full Name *" name="name" placeholder="Ali Hassan" value={form.name} onChange={handleChange} required />
             <Field label="Email Address *" name="email" type="email" placeholder="ali@example.com" value={form.email} onChange={handleChange} required />
           </div>
-
-          {/* Phone + Position */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label="Phone Number" name="phone" placeholder="+92 300 1234567" value={form.phone}
               onChange={handleChange} onBlur={handleBlur} error={fieldErrors.phone} />
-            <Field label="Position Applying For *" name="position" placeholder="e.g. Graphic Designer" value={form.position} onChange={handleChange} required />
+            <Field label="Position Applying For *" name="position" placeholder="e.g. Graphic Designer"
+              value={form.position} onChange={handleChange} required />
           </div>
-
-          {/* LinkedIn */}
           <Field label="LinkedIn / Portfolio" name="linkedin" placeholder="https://linkedin.com/in/yourname"
             value={form.linkedin} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.linkedin} />
 
-          {/* Cover Letter */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "rgba(255,255,255,0.6)" }}>
               Cover Letter / Message
@@ -183,7 +356,6 @@ export default function ApplyForm() {
               style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", lineHeight: 1.6 }} />
           </div>
 
-          {/* CV Upload */}
           <div>
             <label className="block text-xs font-semibold mb-1.5" style={{ color: "rgba(255,255,255,0.6)" }}>
               Upload CV / Resume *
@@ -248,12 +420,10 @@ export default function ApplyForm() {
 }
 
 function Field({ label, name, type = "text", placeholder, value, onChange, onBlur, required = false, error }: {
-  label: string; name: string; type?: string; placeholder: string;
-  value: string;
+  label: string; name: string; type?: string; placeholder: string; value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
-  required?: boolean;
-  error?: string;
+  required?: boolean; error?: string;
 }) {
   return (
     <div>
@@ -261,10 +431,7 @@ function Field({ label, name, type = "text", placeholder, value, onChange, onBlu
       <input type={type} name={name} placeholder={placeholder} value={value}
         onChange={onChange} onBlur={onBlur} required={required}
         className="w-full rounded-2xl px-4 py-3 text-sm text-white outline-none"
-        style={{
-          background: "rgba(255,255,255,0.05)",
-          border: error ? "1px solid rgba(239,68,68,0.6)" : "1px solid rgba(255,255,255,0.1)",
-        }} />
+        style={{ background: "rgba(255,255,255,0.05)", border: error ? "1px solid rgba(239,68,68,0.6)" : "1px solid rgba(255,255,255,0.1)" }} />
       {error && <p className="text-xs mt-1.5 text-red-400">{error}</p>}
     </div>
   );
