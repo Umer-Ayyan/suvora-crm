@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 
 const MAX_SIZE = 5 * 1024 * 1024;
 
@@ -15,228 +15,258 @@ function isValidUrl(val: string) {
   } catch { return false; }
 }
 
-// ── Confetti particle ─────────────────────────────────────────────────────────
-interface Particle {
-  x: number; y: number; vx: number; vy: number;
-  color: string; size: number; rotation: number; rotSpeed: number;
-  opacity: number; shape: "rect" | "circle" | "star";
-}
-
+// ── Success Screen — CV Journey ───────────────────────────────────────────────
 function SuccessScreen({ name }: { name: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef   = useRef<number>(0);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    const COLORS = ["#7c3aed","#4f46e5","#a78bfa","#c4b5fd","#34d399","#60a5fa","#f472b6","#facc15"];
-    const particles: Particle[] = [];
-
-    // Burst from center
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    for (let i = 0; i < 160; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 4 + Math.random() * 14;
-      particles.push({
-        x: cx, y: cy,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - Math.random() * 4,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        size: 4 + Math.random() * 8,
-        rotation: Math.random() * 360,
-        rotSpeed: (Math.random() - 0.5) * 10,
-        opacity: 1,
-        shape: (["rect","circle","star"] as const)[Math.floor(Math.random() * 3)],
-      });
-    }
-
-    function drawStar(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
-      ctx.beginPath();
-      for (let i = 0; i < 5; i++) {
-        const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
-        const b = ((i * 4 + 2) * Math.PI) / 5 - Math.PI / 2;
-        if (i === 0) ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a));
-        else ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
-        ctx.lineTo(x + (r / 2) * Math.cos(b), y + (r / 2) * Math.sin(b));
-      }
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    function animate() {
-      if (!canvas) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      let alive = false;
-      for (const p of particles) {
-        p.x  += p.vx;
-        p.y  += p.vy;
-        p.vy += 0.35;          // gravity
-        p.vx *= 0.98;          // air drag
-        p.rotation += p.rotSpeed;
-        p.opacity  -= 0.012;
-        if (p.opacity <= 0) continue;
-        alive = true;
-        ctx.save();
-        ctx.globalAlpha = p.opacity;
-        ctx.fillStyle   = p.color;
-        ctx.translate(p.x, p.y);
-        ctx.rotate((p.rotation * Math.PI) / 180);
-        if (p.shape === "circle") {
-          ctx.beginPath();
-          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (p.shape === "star") {
-          drawStar(ctx, 0, 0, p.size / 2);
-        } else {
-          ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
-        }
-        ctx.restore();
-      }
-      if (alive) animRef.current = requestAnimationFrame(animate);
-    }
-
-    animRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animRef.current);
-  }, []);
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden"
+    <div className="min-h-screen flex items-center justify-center p-6"
       style={{ background: "linear-gradient(135deg,#0a0a14 0%,#0f0f1c 100%)" }}>
 
-      {/* Canvas confetti */}
-      <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }} />
+      <style>{`
+        @keyframes fadeUp   { from{opacity:0;transform:translateY(32px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes slideIn  { from{transform:translateX(-110%)} to{transform:translateX(0)} }
+        @keyframes floatCV  {
+          0%   { transform: translateY(0) rotate(-4deg); }
+          40%  { transform: translateY(-180px) rotate(2deg) scale(0.85); }
+          70%  { transform: translateY(-280px) rotate(0deg) scale(0.7); opacity:1; }
+          100% { transform: translateY(-310px) scale(0.5); opacity:0; }
+        }
+        @keyframes inboxGlow {
+          0%,100% { box-shadow: 0 0 0 rgba(52,211,153,0); }
+          50%      { box-shadow: 0 0 40px rgba(52,211,153,0.5); }
+        }
+        @keyframes stampDrop {
+          0%   { transform: translateY(-40px) rotate(-8deg); opacity:0; }
+          60%  { transform: translateY(4px) rotate(2deg); opacity:1; }
+          80%  { transform: translateY(-3px) rotate(-1deg); }
+          100% { transform: translateY(0) rotate(0deg); opacity:1; }
+        }
+        @keyframes stampScale {
+          0%   { transform: scale(0); opacity:0; }
+          60%  { transform: scale(1.15); opacity:1; }
+          100% { transform: scale(1); opacity:1; }
+        }
+        @keyframes lineGrow {
+          from { width:0; opacity:0; }
+          to   { width:100%; opacity:1; }
+        }
+        @keyframes trayShake {
+          0%,100% { transform:translateX(0); }
+          20%      { transform:translateX(-4px) rotate(-1deg); }
+          40%      { transform:translateX(4px) rotate(1deg); }
+          60%      { transform:translateX(-2px); }
+          80%      { transform:translateX(2px); }
+        }
+        @keyframes dotPulse {
+          0%,80%,100%{ transform:scale(0.6); opacity:0.4; }
+          40%         { transform:scale(1);   opacity:1;   }
+        }
+        .cv-fly    { animation: floatCV 1.4s 0.2s cubic-bezier(0.4,0,0.2,1) forwards; }
+        .inbox-hit { animation: trayShake 0.4s 1.5s ease, inboxGlow 1.2s 1.5s ease; }
+        .stamp     { animation: stampDrop 0.5s 1.8s cubic-bezier(0.34,1.56,0.64,1) both; }
+        .stamp-txt { animation: stampScale 0.4s 2s cubic-bezier(0.34,1.56,0.64,1) both; }
+        .line1     { animation: lineGrow 0.6s 2.4s ease both; }
+        .line2     { animation: lineGrow 0.6s 2.7s ease both; }
+        .title     { animation: fadeUp 0.6s 2.3s ease both; opacity:0; }
+        .sub       { animation: fadeUp 0.6s 2.6s ease both; opacity:0; }
+        .card-in   { animation: fadeUp 0.7s 0s ease both; }
+      `}</style>
 
-      {/* Glow orb behind card */}
-      <div className="absolute rounded-full pointer-events-none"
-        style={{
-          width: 500, height: 500,
-          background: "radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%)",
-          top: "50%", left: "50%", transform: "translate(-50%,-50%)",
-          animation: "pulse 2s ease-in-out infinite",
-        }} />
+      <div className="card-in w-full max-w-sm text-center">
 
-      {/* Card */}
-      <div className="relative text-center max-w-md w-full"
-        style={{ zIndex: 1, animation: "successPop 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards" }}>
+        {/* Scene: desk with inbox tray */}
+        <div className="relative mx-auto mb-8" style={{ height: 220, width: 260 }}>
 
-        {/* Checkmark ring */}
-        <div className="relative mx-auto mb-8" style={{ width: 120, height: 120 }}>
-          {/* Rotating ring */}
-          <div className="absolute inset-0 rounded-full"
-            style={{
-              background: "conic-gradient(from 0deg, #7c3aed, #4f46e5, #a78bfa, #34d399, #7c3aed)",
-              animation: "spin 3s linear infinite",
-              padding: 3,
-            }}>
-            <div className="w-full h-full rounded-full"
-              style={{ background: "#0d0d1a" }} />
+          {/* CV document — floats up into inbox */}
+          <div className="cv-fly absolute" style={{ bottom: 50, left: "50%", transform: "translateX(-50%) rotate(-4deg)", zIndex: 10 }}>
+            <div className="rounded-xl overflow-hidden"
+              style={{ width: 80, height: 100, background: "white", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+              {/* CV lines */}
+              <div style={{ padding: "10px 10px 8px" }}>
+                <div style={{ height: 6, borderRadius: 3, background: "#7c3aed", marginBottom: 6, width: "70%" }} />
+                <div style={{ height: 3, borderRadius: 2, background: "#e5e7eb", marginBottom: 4, width: "90%" }} />
+                <div style={{ height: 3, borderRadius: 2, background: "#e5e7eb", marginBottom: 4, width: "75%" }} />
+                <div style={{ height: 3, borderRadius: 2, background: "#e5e7eb", marginBottom: 8, width: "60%" }} />
+                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "85%" }} />
+                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "70%" }} />
+                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "80%" }} />
+                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "55%" }} />
+                <div style={{ height: 2, borderRadius: 2, background: "#f3f4f6", marginBottom: 3, width: "75%" }} />
+              </div>
+            </div>
           </div>
-          {/* Inner filled circle */}
-          <div className="absolute inset-2 rounded-full flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg,#7c3aed,#4f46e5)",
-              boxShadow: "0 0 40px rgba(124,58,237,0.6), 0 0 80px rgba(124,58,237,0.3)",
-              animation: "glowPulse 2s ease-in-out infinite",
-            }}>
-            {/* Animated check */}
-            <svg viewBox="0 0 52 52" style={{ width: 44, height: 44 }}>
-              <polyline
-                fill="none" stroke="white" strokeWidth={4}
-                strokeLinecap="round" strokeLinejoin="round"
-                points="14,26 22,34 38,18"
-                style={{ strokeDasharray: 48, strokeDashoffset: 0, animation: "drawCheck 0.5s 0.3s ease forwards" }}
-              />
-            </svg>
+
+          {/* Inbox tray (top) */}
+          <div className="inbox-hit absolute" style={{ top: 10, left: "50%", transform: "translateX(-50%)", zIndex: 5 }}>
+            {/* Tray label */}
+            <div className="flex items-center justify-center gap-1.5 mb-2">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#34d399" }} />
+              <span className="text-xs font-bold tracking-widest uppercase" style={{ color: "#34d399" }}>Inbox</span>
+            </div>
+            {/* Tray body */}
+            <div className="relative rounded-xl overflow-hidden"
+              style={{ width: 120, height: 70, background: "rgba(52,211,153,0.08)", border: "2px solid rgba(52,211,153,0.35)" }}>
+              {/* Tray slot */}
+              <div style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: "60%", height: 4, background: "rgba(52,211,153,0.4)", borderRadius: "0 0 4px 4px" }} />
+              {/* Stack of papers inside */}
+              <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", width: 70, height: 38, background: "rgba(255,255,255,0.06)", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)" }} />
+              <div style={{ position: "absolute", bottom: 6, left: "50%", transform: "translateX(-50%) rotate(2deg)", width: 68, height: 38, background: "rgba(255,255,255,0.04)", borderRadius: 6, border: "1px solid rgba(255,255,255,0.07)" }} />
+            </div>
+          </div>
+
+          {/* RECEIVED stamp — drops after CV lands */}
+          <div className="stamp absolute" style={{ top: 32, right: 10, zIndex: 20 }}>
+            <div className="rounded-lg px-3 py-1.5"
+              style={{ border: "2px solid #34d399", transform: "rotate(12deg)" }}>
+              <div className="stamp-txt text-xs font-black tracking-widest" style={{ color: "#34d399", fontSize: 10 }}>
+                RECEIVED
+              </div>
+            </div>
+          </div>
+
+          {/* Desk surface */}
+          <div className="absolute bottom-0 left-0 right-0" style={{ height: 48 }}>
+            <div className="w-full h-full rounded-2xl"
+              style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))", border: "1px solid rgba(255,255,255,0.08)" }}>
+              {/* Desk items */}
+              <div style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", display: "flex", gap: 6, alignItems: "center" }}>
+                {/* Pen */}
+                <div style={{ width: 3, height: 22, borderRadius: 2, background: "rgba(167,139,250,0.5)", transform: "rotate(20deg)" }} />
+                {/* Cup */}
+                <div style={{ width: 14, height: 16, borderRadius: "0 0 4px 4px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)" }} />
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Floating sparkles */}
-        {[...Array(6)].map((_, i) => (
-          <div key={i} className="absolute pointer-events-none"
-            style={{
-              width: 6, height: 6, borderRadius: "50%",
-              background: ["#7c3aed","#a78bfa","#34d399","#60a5fa","#f472b6","#facc15"][i],
-              top: `${[10,20,5,15,8,18][i]}%`,
-              left: `${[10,80,50,25,70,40][i]}%`,
-              animation: `floatSparkle ${1.5 + i * 0.3}s ease-in-out ${i * 0.2}s infinite alternate`,
-              boxShadow: `0 0 8px ${["#7c3aed","#a78bfa","#34d399","#60a5fa","#f472b6","#facc15"][i]}`,
-            }} />
-        ))}
 
         {/* Text content */}
-        <div style={{ animation: "fadeSlideUp 0.5s 0.4s ease both" }}>
-          <h2 className="text-3xl font-black text-white mb-2 tracking-tight">
-            Application Sent! 🎉
-          </h2>
-          <p className="text-lg font-semibold mb-1" style={{
-            background: "linear-gradient(90deg,#a78bfa,#60a5fa,#34d399)",
-            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          }}>
-            Hey {name}, you&apos;re awesome!
-          </p>
-        </div>
-
-        <div style={{ animation: "fadeSlideUp 0.5s 0.6s ease both", opacity: 0 }}>
-          <p className="text-base mt-3 mb-6" style={{ color: "rgba(255,255,255,0.55)", lineHeight: 1.7 }}>
-            We&apos;ve received your application and our team will review your profile carefully.
-            Expect to hear from us via email soon.
+        <h2 className="title text-2xl font-black text-white mb-2">
+          Application Received!
+        </h2>
+        <div className="sub">
+          <p className="text-sm font-semibold mb-4"
+            style={{ color: "rgba(255,255,255,0.45)" }}>
+            Hey <span style={{ color: "#a78bfa" }}>{name}</span>, your CV just landed in our inbox
           </p>
 
-          {/* Divider with dots */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="rounded-full"
-                style={{
-                  width: 6, height: 6,
-                  background: i === 1 ? "#7c3aed" : "rgba(255,255,255,0.15)",
-                  animation: `dotBounce 1.2s ${i * 0.2}s ease-in-out infinite`,
-                }} />
+          {/* Timeline */}
+          <div className="rounded-2xl p-4 text-left space-y-3"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            {[
+              { label: "Application submitted",  done: true,  delay: "2.9s" },
+              { label: "Under review by our team", done: false, delay: "3.1s" },
+              { label: "We'll reach out via email", done: false, delay: "3.3s" },
+            ].map((step, i) => (
+              <div key={i} className="flex items-center gap-3"
+                style={{ animation: `fadeUp 0.5s ${step.delay} ease both`, opacity: 0 }}>
+                <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: step.done ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.05)", border: `1.5px solid ${step.done ? "#34d399" : "rgba(255,255,255,0.1)"}` }}>
+                  {step.done
+                    ? <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    : <div className="w-1.5 h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />}
+                </div>
+                <span className="text-xs" style={{ color: step.done ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)" }}>
+                  {step.label}
+                </span>
+              </div>
             ))}
           </div>
 
-          <p className="text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>
-            Your information is kept private and used only for recruitment.
-          </p>
+          {/* Typing dots — "our team is reviewing" */}
+          <div className="flex items-center justify-center gap-2 mt-5"
+            style={{ animation: "fadeUp 0.5s 3.5s ease both", opacity: 0 }}>
+            <div className="flex gap-1">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full"
+                  style={{ background: "#a78bfa", animation: `dotPulse 1.2s ${i * 0.2}s ease-in-out infinite` }} />
+              ))}
+            </div>
+            <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>Team notified</span>
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* CSS keyframes */}
+// ── Animated Submit Button ────────────────────────────────────────────────────
+type BtnPhase = "idle" | "loading" | "sending";
+
+function SubmitButton({ phase }: { phase: BtnPhase }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl" style={{
+      height: 52,
+      background: "linear-gradient(135deg,#7c3aed,#4f46e5)",
+      boxShadow: "0 4px 20px rgba(124,58,237,0.35)",
+      transition: "width 0.5s cubic-bezier(0.4,0,0.2,1)",
+    }}>
       <style>{`
-        @keyframes successPop {
-          from { opacity: 0; transform: scale(0.7) translateY(30px); }
-          to   { opacity: 1; transform: scale(1) translateY(0); }
+        @keyframes docSlide {
+          0%   { transform: translateX(-80px) rotate(-8deg); opacity:0; }
+          15%  { opacity:1; }
+          85%  { opacity:1; }
+          100% { transform: translateX(calc(100vw)) rotate(4deg); opacity:0; }
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes glowPulse {
-          0%,100% { box-shadow: 0 0 40px rgba(124,58,237,0.6), 0 0 80px rgba(124,58,237,0.3); }
-          50%      { box-shadow: 0 0 60px rgba(124,58,237,0.9), 0 0 120px rgba(124,58,237,0.5); }
-        }
-        @keyframes drawCheck {
-          from { stroke-dashoffset: 48; }
-          to   { stroke-dashoffset: 0; }
-        }
-        @keyframes fadeSlideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes floatSparkle {
-          from { transform: translateY(0) scale(1); opacity: 0.6; }
-          to   { transform: translateY(-20px) scale(1.4); opacity: 1; }
-        }
-        @keyframes dotBounce {
-          0%,100% { transform: translateY(0); }
-          50%      { transform: translateY(-6px); }
-        }
-        @keyframes pulse {
-          0%,100% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
-          50%      { transform: translate(-50%,-50%) scale(1.1); opacity: 0.7; }
-        }
+        @keyframes trackReveal { from{width:0} to{width:100%} }
+        @keyframes idlePulse { 0%,100%{opacity:1} 50%{opacity:0.85} }
       `}</style>
+
+      {/* Idle label */}
+      <div className="absolute inset-0 flex items-center justify-center"
+        style={{
+          transition: "opacity 0.3s",
+          opacity: phase === "idle" ? 1 : 0,
+          pointerEvents: "none",
+        }}>
+        <span className="text-sm font-bold text-white">Submit Application →</span>
+      </div>
+
+      {/* Loading state */}
+      {phase === "loading" && (
+        <div className="absolute inset-0 flex items-center justify-center gap-2">
+          <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+          <span className="text-sm font-semibold text-white opacity-80">Sending...</span>
+        </div>
+      )}
+
+      {/* Sending state — CV flies across */}
+      {phase === "sending" && (
+        <div className="absolute inset-0 flex items-center overflow-hidden">
+          {/* Track / road line */}
+          <div style={{
+            position: "absolute", top: "50%", left: 0, height: 2,
+            background: "rgba(255,255,255,0.2)", borderRadius: 1,
+            animation: "trackReveal 0.3s ease forwards",
+            width: "100%",
+          }} />
+          {/* Dashes on track */}
+          {[20, 35, 50, 65, 80].map((pct) => (
+            <div key={pct} style={{
+              position: "absolute", top: "50%", left: `${pct}%`,
+              width: 8, height: 2, background: "rgba(255,255,255,0.15)",
+              borderRadius: 1, transform: "translateY(-50%)",
+            }} />
+          ))}
+          {/* Flying CV document */}
+          <div style={{ animation: "docSlide 1.1s 0.1s cubic-bezier(0.4,0,0.6,1) forwards", position: "absolute" }}>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+              style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(4px)" }}>
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <span className="text-xs font-bold text-white">CV</span>
+            </div>
+          </div>
+          {/* Inbox icon on right */}
+          <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: "rgba(52,211,153,0.2)", border: "1px solid rgba(52,211,153,0.4)" }}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -249,7 +279,7 @@ export default function ApplyForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [cv, setCv]           = useState<File | null>(null);
   const [cvError, setCvError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [btnPhase, setBtnPhase] = useState<BtnPhase>("idle");
   const [done, setDone]       = useState(false);
   const [error, setError]     = useState("");
   const fileRef               = useRef<HTMLInputElement>(null);
@@ -290,21 +320,28 @@ export default function ApplyForm() {
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     if (!cv) { setCvError("Please upload your CV"); return; }
 
-    setSubmitting(true); setError("");
+    setBtnPhase("loading");
+    setError("");
+
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve((reader.result as string).split(",")[1]);
       reader.onerror = reject;
       reader.readAsDataURL(cv);
     });
+
     const res = await fetch("/api/applications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, cvFileName: cv.name, cvFileType: cv.type, cvFileData: base64, cvFileSize: cv.size }),
     });
-    setSubmitting(false);
-    if (res.ok) { setDone(true); }
-    else {
+
+    if (res.ok) {
+      // Play the sending animation before showing success
+      setBtnPhase("sending");
+      setTimeout(() => setDone(true), 1400);
+    } else {
+      setBtnPhase("idle");
       const data = await res.json();
       setError(data.error || "Something went wrong. Please try again.");
     }
@@ -400,15 +437,8 @@ export default function ApplyForm() {
             </div>
           )}
 
-          <button type="submit" disabled={submitting}
-            className="w-full py-3.5 rounded-2xl text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
-            style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)", boxShadow: "0 4px 20px rgba(124,58,237,0.35)" }}>
-            {submitting ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                Submitting...
-              </span>
-            ) : "Submit Application →"}
+          <button type="submit" disabled={btnPhase !== "idle"} className="w-full">
+            <SubmitButton phase={btnPhase} />
           </button>
 
           <p className="text-center text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>
