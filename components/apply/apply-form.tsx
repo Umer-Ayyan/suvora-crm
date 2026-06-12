@@ -4,10 +4,27 @@ import { useState, useRef } from "react";
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 
+// Validation helpers
+function isValidPhone(val: string) {
+  // Allow digits, spaces, +, -, (, ) — at least 7 digits total
+  const digits = val.replace(/\D/g, "");
+  return /^[+\d][\d\s\-().]{5,19}$/.test(val) && digits.length >= 7;
+}
+
+function isValidUrl(val: string) {
+  try {
+    const url = new URL(val.startsWith("http") ? val : `https://${val}`);
+    return url.hostname.includes(".");
+  } catch {
+    return false;
+  }
+}
+
 export default function ApplyForm() {
   const [form, setForm] = useState({
     name: "", email: "", phone: "", position: "", linkedin: "", coverLetter: "",
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [cv, setCv]           = useState<File | null>(null);
   const [cvError, setCvError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -16,7 +33,21 @@ export default function ApplyForm() {
   const fileRef               = useRef<HTMLInputElement>(null);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    // Clear error on change
+    if (fieldErrors[name]) setFieldErrors((prev) => ({ ...prev, [name]: "" }));
+  }
+
+  function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const { name, value } = e.target;
+    if (!value.trim()) return;
+    if (name === "phone" && !isValidPhone(value)) {
+      setFieldErrors((prev) => ({ ...prev, phone: "Enter a valid phone number (e.g. +92 300 1234567)" }));
+    }
+    if (name === "linkedin" && !isValidUrl(value)) {
+      setFieldErrors((prev) => ({ ...prev, linkedin: "Enter a valid URL (e.g. https://linkedin.com/in/yourname)" }));
+    }
   }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -32,7 +63,18 @@ export default function ApplyForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Validate before submit
+    const errors: Record<string, string> = {};
+    if (form.phone.trim() && !isValidPhone(form.phone)) {
+      errors.phone = "Enter a valid phone number (e.g. +92 300 1234567)";
+    }
+    if (form.linkedin.trim() && !isValidUrl(form.linkedin)) {
+      errors.linkedin = "Enter a valid URL (e.g. https://linkedin.com/in/yourname)";
+    }
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     if (!cv) { setCvError("Please upload your CV"); return; }
+
     setSubmitting(true);
     setError("");
 
@@ -98,7 +140,7 @@ export default function ApplyForm() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
             style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
             <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={1.8} style={{ width: 26, height: 26 }}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-white">Apply Now</h1>
@@ -120,12 +162,14 @@ export default function ApplyForm() {
 
           {/* Phone + Position */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Phone Number" name="phone" placeholder="+92 300 0000000" value={form.phone} onChange={handleChange} />
+            <Field label="Phone Number" name="phone" placeholder="+92 300 1234567" value={form.phone}
+              onChange={handleChange} onBlur={handleBlur} error={fieldErrors.phone} />
             <Field label="Position Applying For *" name="position" placeholder="e.g. Graphic Designer" value={form.position} onChange={handleChange} required />
           </div>
 
           {/* LinkedIn */}
-          <Field label="LinkedIn / Portfolio" name="linkedin" placeholder="https://linkedin.com/in/yourname" value={form.linkedin} onChange={handleChange} />
+          <Field label="LinkedIn / Portfolio" name="linkedin" placeholder="https://linkedin.com/in/yourname"
+            value={form.linkedin} onChange={handleChange} onBlur={handleBlur} error={fieldErrors.linkedin} />
 
           {/* Cover Letter */}
           <div>
@@ -203,16 +247,25 @@ export default function ApplyForm() {
   );
 }
 
-function Field({ label, name, type = "text", placeholder, value, onChange, required = false }: {
+function Field({ label, name, type = "text", placeholder, value, onChange, onBlur, required = false, error }: {
   label: string; name: string; type?: string; placeholder: string;
-  value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; required?: boolean;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  required?: boolean;
+  error?: string;
 }) {
   return (
     <div>
       <label className="block text-xs font-semibold mb-1.5" style={{ color: "rgba(255,255,255,0.6)" }}>{label}</label>
-      <input type={type} name={name} placeholder={placeholder} value={value} onChange={onChange} required={required}
+      <input type={type} name={name} placeholder={placeholder} value={value}
+        onChange={onChange} onBlur={onBlur} required={required}
         className="w-full rounded-2xl px-4 py-3 text-sm text-white outline-none"
-        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }} />
+        style={{
+          background: "rgba(255,255,255,0.05)",
+          border: error ? "1px solid rgba(239,68,68,0.6)" : "1px solid rgba(255,255,255,0.1)",
+        }} />
+      {error && <p className="text-xs mt-1.5 text-red-400">{error}</p>}
     </div>
   );
 }
