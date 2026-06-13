@@ -2,6 +2,8 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";
+import { rateLimit, rateLimitReset } from "@/lib/rate-limit";
+import { verifyTwoFactorCode } from "@/lib/twofactor";
 
 export type Permissions = {
   leads:       boolean;
@@ -34,9 +36,18 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         employeeId: {},
         password: {},
+        otp: {},
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.employeeId || !credentials?.password) return null;
+
+        // Throttle brute-force: 5 attempts / 15 min per IP + employeeId.
+        const ip =
+          (req?.headers?.["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ||
+          (req?.headers?.["x-real-ip"] as string | undefined) ||
+          "unknown";
+        const rlKey = `web-login:${ip}:${credentials.employeeId}`;
+        if (!rateLimit(rlKey).allowed) return null;
 
         const user = await prisma.user.findUnique({
           where: { employeeId: credentials.employeeId },
@@ -47,6 +58,21 @@ export const authOptions: NextAuthOptions = {
 
         const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) return null;
+
+        // Second factor (TOTP) if the user has 2FA enabled.
+        if (user.twoFactorEnabled && user.twoFactorSecret) {
+          const otp = (credentials.otp ?? "").trim();
+          if (!otp) {
+            // Password was correct — signal the UI to prompt for the code.
+            throw new Error("2FA_REQUIRED");
+          }
+          if (!verifyTwoFactorCode(otp, user.twoFactorSecret)) {
+            throw new Error("2FA_INVALID");
+          }
+        }
+
+        // Successful login — clear the throttle counter.
+        rateLimitReset(rlKey);
 
         // Determine permissions:
         // - admin: always all access

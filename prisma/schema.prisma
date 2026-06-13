@@ -358,6 +358,8 @@ model User {
   status         String    @default("active") // active | inactive | terminated
   lastSeenAt     DateTime?
   sessionVersion Int       @default(0)
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?  // base32 TOTP secret (null until 2FA confirmed)
   createdAt      DateTime  @default(now())
 
   leads             Lead[]
@@ -383,6 +385,20 @@ model User {
   leaveRequests     LeaveRequest[]
   leaveReviews      LeaveRequest[]    @relation("LeaveReviewer")
   appReviews        JobApplication[]  @relation("AppReviewer")
+  pushTokens        PushToken[]
+}
+
+// ─── PUSH TOKEN (Expo push notifications) ───────────────────────────────────
+model PushToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform  String?  // ios | android
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @default(now())
+
+  @@index([userId])
 }
 
 // ─── EMPLOYEE DOCUMENT ─────────────────────────────────────────────────────

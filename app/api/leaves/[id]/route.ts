@@ -1,6 +1,7 @@
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { notify } from "@/lib/push";
 import { NextRequest, NextResponse } from "next/server";
 
 // PATCH — approve/reject (admin/manager) or cancel own pending leave (employee)
@@ -35,6 +36,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       reviewedBy: { select: { id: true, name: true } },
     },
   });
+
+  // Notify the requester when a reviewer approves/rejects.
+  if (["approved", "rejected"].includes(status) && ["admin", "manager"].includes(role)) {
+    try {
+      await notify(updated.userId, {
+        title: `Leave ${status === "approved" ? "Approved" : "Rejected"}`,
+        message: `Your ${updated.type} leave request has been ${status}.`,
+        type: status === "approved" ? "success" : "warning",
+        link: "/leaves",
+        data: { type: "leave", leaveId: updated.id },
+      });
+    } catch (err) {
+      console.error("[leave status push]", err);
+    }
+  }
 
   return NextResponse.json(updated);
 }

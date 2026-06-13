@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
+import { notify } from "@/lib/push";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -10,6 +11,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const { id } = await params;
     const body = await req.json();
+
+    const prev = await prisma.task.findUnique({
+      where: { id },
+      select: { assignedToId: true },
+    });
 
     const data: any = {};
     if (body.title !== undefined)        data.title = body.title;
@@ -30,6 +36,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         client:     { select: { id: true, name: true } },
       },
     });
+
+    // Notify the assignee if the task was (re)assigned to someone new.
+    if (
+      body.assignedToId !== undefined &&
+      task.assignedToId &&
+      task.assignedToId !== prev?.assignedToId
+    ) {
+      await notify(task.assignedToId, {
+        title: "New Task Assigned",
+        message: `You have been assigned: "${task.title}"`,
+        type: "info",
+        link: "/tasks",
+        data: { type: "task", taskId: task.id },
+      });
+    }
 
     return NextResponse.json(task);
   } catch (e) {

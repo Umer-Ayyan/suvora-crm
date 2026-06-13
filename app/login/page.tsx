@@ -8,6 +8,8 @@ import SuvoraLogo from "@/components/ui/suvora-logo";
 export default function LoginPage() {
   const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [twoFactorStep, setTwoFactorStep] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -17,11 +19,25 @@ export default function LoginPage() {
       toast.error("Please enter Employee ID and Password");
       return;
     }
+    if (twoFactorStep && otp.trim().length < 6) {
+      toast.error("Enter the 6-digit code from your authenticator app");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await signIn("credentials", { employeeId, password, redirect: false });
+      const res = await signIn("credentials", {
+        employeeId,
+        password,
+        otp: twoFactorStep ? otp.trim() : "",
+        redirect: false,
+      });
       if (res?.ok) {
         window.location.replace("/");
+      } else if (res?.error === "2FA_REQUIRED") {
+        setTwoFactorStep(true);
+        toast.message("Enter the 6-digit code from your authenticator app");
+      } else if (res?.error === "2FA_INVALID") {
+        toast.error("Invalid authentication code");
       } else {
         toast.error("Invalid credentials");
       }
@@ -153,6 +169,38 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* 2FA code */}
+            {twoFactorStep && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-medium" style={{ color: "rgba(255,255,255,0.5)" }}>
+                  Authentication Code
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder="6-digit code"
+                  value={otp}
+                  autoFocus
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                  className="w-full rounded-xl px-3.5 py-2.5 text-sm text-white outline-none transition-all placeholder:text-white/20 tracking-[0.3em]"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = "rgba(99,102,241,0.7)";
+                    e.currentTarget.style.boxShadow = "0 0 0 3px rgba(99,102,241,0.12)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                />
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
+                  Open your authenticator app and enter the current code.
+                </p>
+              </div>
+            )}
+
             {/* Submit */}
             <button
               type="submit"
@@ -172,7 +220,7 @@ export default function LoginPage() {
                   Signing in…
                 </span>
               ) : (
-                "Sign in"
+                twoFactorStep ? "Verify & Sign in" : "Sign in"
               )}
             </button>
           </form>

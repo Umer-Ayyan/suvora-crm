@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
+import { notify } from "@/lib/push";
 
 export async function GET(req: NextRequest) {
   try {
@@ -80,14 +81,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (assignedToId) {
-      await prisma.notification.create({
-        data: {
-          title: "New Task Assigned",
-          message: `You have been assigned: "${title.trim()}"`,
-          type: "info",
-          link: "/tasks",
-          userId: assignedToId,
-        },
+      await notify(assignedToId, {
+        title: "New Task Assigned",
+        message: `You have been assigned: "${title.trim()}"`,
+        type: "info",
+        link: "/tasks",
+        data: { type: "task", taskId: task.id },
       });
     }
 

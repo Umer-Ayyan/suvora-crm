@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
+import { notify } from "@/lib/push";
 
 export async function GET(
   req: NextRequest,
@@ -114,6 +115,17 @@ export async function PATCH(
 
     if (body.createdById !== undefined && body.createdById !== lead.createdById) {
       const newOwner = await prisma.user.findUnique({ where: { id: body.createdById } });
+      if (body.createdById) {
+        logs.push(
+          notify(body.createdById, {
+            title: "New Lead Assigned",
+            message: `You have been assigned the lead "${lead.name}"`,
+            type: "info",
+            link: "/leads",
+            data: { type: "lead", leadId: id },
+          })
+        );
+      }
       logs.push(
         prisma.leadActivity.create({
           data: { note: `Lead reassigned to ${newOwner?.name || "Unknown"}`, leadId: id, userId: user.id },

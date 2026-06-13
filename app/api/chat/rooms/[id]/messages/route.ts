@@ -2,6 +2,7 @@ import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/get-session-user-id";
+import { sendExpoPush } from "@/lib/push";
 import { NextRequest, NextResponse } from "next/server";
 
 const MSG_INCLUDE = {
@@ -74,6 +75,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
     include: MSG_INCLUDE,
   });
+
+  // Push to other room members (client suppresses if that room is open).
+  try {
+    const room = await prisma.chatRoom.findUnique({
+      where: { id },
+      select: { name: true, members: { select: { userId: true } } },
+    });
+    const recipientIds = (room?.members ?? [])
+      .map((m) => m.userId)
+      .filter((uid) => uid !== userId);
+    if (recipientIds.length) {
+      const senderName = message.sender?.name ?? "New message";
+      await sendExpoPush(recipientIds, {
+        title: room?.name || senderName,
+        body: `${senderName}: ${message.content}`.slice(0, 140),
+        data: { type: "chat", roomId: id, roomName: room?.name ?? "" },
+      });
+    }
+  } catch (err) {
+    console.error("[chat push]", err);
+  }
 
   return NextResponse.json(message);
 }

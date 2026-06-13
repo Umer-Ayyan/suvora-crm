@@ -1,13 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
+
+type Emp = { id: string; name: string; employeeId?: string; department?: string | null };
 
 export default function SendAnnouncement() {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [target, setTarget] = useState<"all" | "users">("all");
+  const [employees, setEmployees] = useState<Emp[]>([]);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!open || employees.length) return;
+    fetch("/api/employees")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setEmployees(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [open, employees.length]);
+
+  const selectedIds = Object.keys(selected).filter((k) => selected[k]);
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -15,18 +30,31 @@ export default function SendAnnouncement() {
       toast.error("Title and message are required");
       return;
     }
+    if (target === "users" && selectedIds.length === 0) {
+      toast.error("Select at least one recipient");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await fetch("/api/announcements", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, message }),
-      });
+      const res =
+        target === "all"
+          ? await fetch("/api/announcements", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title, message }),
+            })
+          : await fetch("/api/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title, message, target: "users", userIds: selectedIds }),
+            });
       const data = await res.json();
       if (res.ok) {
-        toast.success(`Announcement sent to ${data.sentTo} team members`);
+        toast.success(`Announcement sent to ${data.sentTo} team member(s)`);
         setTitle("");
         setMessage("");
+        setSelected({});
+        setTarget("all");
         setOpen(false);
       } else {
         toast.error(data.error || "Failed to send");
@@ -98,6 +126,74 @@ export default function SendAnnouncement() {
             </div>
 
             <form onSubmit={handleSend} className="space-y-4">
+              {/* Recipients */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                  Recipients
+                </label>
+                <div className="flex gap-2">
+                  {([
+                    { v: "all", label: "Everyone" },
+                    { v: "users", label: "Choose People" },
+                  ] as const).map((opt) => {
+                    const active = target === opt.v;
+                    return (
+                      <button
+                        key={opt.v}
+                        type="button"
+                        onClick={() => setTarget(opt.v)}
+                        className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
+                        style={{
+                          background: active ? "rgba(124,58,237,0.18)" : "rgba(255,255,255,0.05)",
+                          border: active ? "1px solid rgba(124,58,237,0.6)" : "1px solid rgba(255,255,255,0.1)",
+                          color: active ? "#a78bfa" : "rgba(255,255,255,0.6)",
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recipient list */}
+              {target === "users" && (
+                <div
+                  className="rounded-xl p-2 max-h-52 overflow-y-auto"
+                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  {employees.length === 0 ? (
+                    <p className="text-xs text-center py-3" style={{ color: "rgba(255,255,255,0.3)" }}>Loading…</p>
+                  ) : (
+                    employees.map((e) => {
+                      const on = !!selected[e.id];
+                      return (
+                        <button
+                          key={e.id}
+                          type="button"
+                          onClick={() => setSelected((p) => ({ ...p, [e.id]: !p[e.id] }))}
+                          className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg transition-colors"
+                          style={{ background: on ? "rgba(124,58,237,0.12)" : "transparent" }}
+                        >
+                          <span className="text-sm text-left" style={{ color: "rgba(255,255,255,0.85)" }}>
+                            {e.name}
+                            <span className="text-xs ml-1.5" style={{ color: "rgba(255,255,255,0.35)" }}>
+                              {e.employeeId}
+                            </span>
+                          </span>
+                          <span
+                            className="w-4 h-4 rounded-full flex-shrink-0"
+                            style={{
+                              border: on ? "5px solid #a78bfa" : "2px solid rgba(255,255,255,0.25)",
+                            }}
+                          />
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
               {/* Title */}
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
@@ -163,7 +259,9 @@ export default function SendAnnouncement() {
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                This will be sent to all employees and managers instantly.
+                {target === "all"
+                  ? "This will be sent to all employees and managers instantly."
+                  : `This will be sent to ${selectedIds.length} selected recipient(s) instantly.`}
               </div>
 
               {/* Actions */}

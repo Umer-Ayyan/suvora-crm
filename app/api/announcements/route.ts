@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
+import { sendExpoPush } from "@/lib/push";
 
 // POST /api/announcements — admin sends announcement to all users
 export async function POST(req: NextRequest) {
@@ -33,6 +34,12 @@ export async function POST(req: NextRequest) {
         read: false,
       })),
     });
+
+    // Push to all recipients (in-app rows already created above).
+    await sendExpoPush(
+      users.map((u) => u.id),
+      { title, body: message, data: { type: "announcement", link: "/notifications" } }
+    );
 
     // Log activity
     const admin = await prisma.user.findUnique({
