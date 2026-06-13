@@ -33,6 +33,14 @@ type Message  = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getRoomName(room: Room, uid: string) {
   if (room.type === "group") return room.name || "Group Chat";
+  // If the viewer is NOT a member (e.g. admin monitoring), show BOTH
+  // participants so it's clear who messaged whom.
+  const isMember = room.members.some((m) => m.user.id === uid);
+  if (!isMember) {
+    const names = room.members.map((m) => m.user.name);
+    if (names.length >= 2) return names.join(" ↔ ");
+    return names[0] || "Direct Message";
+  }
   return room.members.find((m) => m.user.id !== uid)?.user.name || "Direct Message";
 }
 
