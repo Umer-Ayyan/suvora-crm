@@ -44,6 +44,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json(updated);
   }
 
+  // ── Pin / unpin: { pin: true | false } ───────────────────────────────────────
+  if (typeof body.pin === "boolean") {
+    const msg = await prisma.chatMessage.findUnique({ where: { id: msgId }, select: { roomId: true } });
+    if (!msg || msg.roomId !== roomId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const updated = await prisma.chatMessage.update({
+      where: { id: msgId },
+      data: body.pin ? { pinnedAt: new Date(), pinnedById: userId } : { pinnedAt: null, pinnedById: null },
+      select: { id: true, pinnedAt: true, pinnedById: true },
+    });
+    return NextResponse.json(updated);
+  }
+
   // ── Edit content ────────────────────────────────────────────────────────────
   const { content } = body;
   if (!content?.trim()) return NextResponse.json({ error: "Empty content" }, { status: 400 });

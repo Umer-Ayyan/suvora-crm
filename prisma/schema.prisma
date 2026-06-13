@@ -260,10 +260,22 @@ model ChatMessage {
   // Emoji reactions: { "👍": ["userId1","userId2"], "❤️": ["userId3"] }
   reactions Json?
 
+  // Attachments (image / file / voice) — stored in Supabase Storage.
+  attachmentUrl  String?
+  attachmentType String?  // "image" | "file" | "voice"
+  attachmentName String?
+  attachmentSize Int?
+  attachmentMeta Json?     // voice: { duration }, image: { width, height }
+
+  // Pinning
+  pinnedAt   DateTime?
+  pinnedById String?
+
   readBy    ChatMessageRead[]
   hiddenBy  ChatMessageHide[]
 
   @@index([roomId, createdAt])
+  @@index([roomId, pinnedAt])
   @@index([senderId])
   @@index([replyToId])
 }

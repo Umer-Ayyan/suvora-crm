@@ -19,6 +19,12 @@ type Message  = {
   replyToId?: string | null;
   replyTo?: ReplyTo | null;
   reactions?: Record<string, string[]> | null;
+  attachmentUrl?: string | null;
+  attachmentType?: string | null;
+  attachmentName?: string | null;
+  attachmentSize?: number | null;
+  attachmentMeta?: { duration?: number } | null;
+  pinnedAt?: string | null;
   // client-only
   status?: "sending" | "failed";
   tempId?: string;
@@ -1236,9 +1242,28 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                                         </p>
                                       </div>
                                     )}
-                                    <p className="text-sm text-white leading-relaxed" style={{ wordBreak: "break-word" }}>
-                                      {msg.content}
-                                    </p>
+                                    {/* Attachment */}
+                                    {msg.attachmentUrl && msg.attachmentType === "image" && (
+                                      <a href={msg.attachmentUrl} target="_blank" rel="noreferrer">
+                                        <img src={msg.attachmentUrl} alt="" className="rounded-xl mb-1" style={{ maxWidth: 240, maxHeight: 240, objectFit: "cover" }} />
+                                      </a>
+                                    )}
+                                    {msg.attachmentUrl && msg.attachmentType === "voice" && (
+                                      <audio controls src={msg.attachmentUrl} className="mb-1" style={{ maxWidth: 240, height: 36 }} />
+                                    )}
+                                    {msg.attachmentUrl && msg.attachmentType === "file" && (
+                                      <a href={msg.attachmentUrl} target="_blank" rel="noreferrer"
+                                        className="flex items-center gap-2 mb-1 px-2.5 py-2 rounded-xl"
+                                        style={{ background: "rgba(0,0,0,0.2)", minWidth: 180 }}>
+                                        <span style={{ fontSize: 20 }}>📎</span>
+                                        <span className="text-sm text-white truncate" style={{ maxWidth: 180 }}>{msg.attachmentName || "File"}</span>
+                                      </a>
+                                    )}
+                                    {!!msg.content && (
+                                      <p className="text-sm text-white leading-relaxed" style={{ wordBreak: "break-word" }}>
+                                        {msg.content}
+                                      </p>
+                                    )}
                                     <div className={`flex items-center gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}>
                                       {msg.editedAt && <span className="text-[10px] italic" style={{ color: "rgba(255,255,255,0.4)" }}>edited</span>}
                                       <span className="text-[10px]" style={{ color: isMe ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)" }}>

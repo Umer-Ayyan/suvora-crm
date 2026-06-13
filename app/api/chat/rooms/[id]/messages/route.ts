@@ -52,8 +52,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const isAdmin = (session.user as any).role === "admin";
   const { id } = await params;
 
-  const { content, replyToId } = await req.json();
-  if (!content?.trim()) return NextResponse.json({ error: "Empty message" }, { status: 400 });
+  const { content, replyToId, attachmentUrl, attachmentType, attachmentName, attachmentSize, attachmentMeta } = await req.json();
+  const hasAttachment = !!attachmentUrl;
+  if (!content?.trim() && !hasAttachment)
+    return NextResponse.json({ error: "Empty message" }, { status: 400 });
 
   if (!isAdmin) {
     const member = await prisma.chatRoomMember.findUnique({ where: { roomId_userId: { roomId: id, userId } } });
@@ -68,10 +70,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const message = await prisma.chatMessage.create({
     data: {
-      content: content.trim(),
+      content: (content ?? "").trim(),
       roomId: id,
       senderId: userId,
       ...(replyToId ? { replyToId } : {}),
+      ...(hasAttachment
+        ? {
+            attachmentUrl,
+            attachmentType: attachmentType ?? "file",
+            attachmentName: attachmentName ?? null,
+            attachmentSize: typeof attachmentSize === "number" ? attachmentSize : null,
+            attachmentMeta: attachmentMeta ?? undefined,
+          }
+        : {}),
     },
     include: MSG_INCLUDE,
   });
@@ -89,9 +100,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .filter((uid) => uid !== userId);
       if (recipientIds.length) {
         const senderName = message.sender?.name ?? "New message";
+        const preview = message.content?.trim()
+          ? message.content
+          : message.attachmentType === "voice"
+          ? "🎤 Voice message"
+          : message.attachmentType === "image"
+          ? "📷 Photo"
+          : "📎 Attachment";
         await sendExpoPush(recipientIds, {
           title: room?.name || senderName,
-          body: `${senderName}: ${message.content}`.slice(0, 140),
+          body: `${senderName}: ${preview}`.slice(0, 140),
           data: { type: "chat", roomId: id, roomName: room?.name ?? "" },
         });
       }
