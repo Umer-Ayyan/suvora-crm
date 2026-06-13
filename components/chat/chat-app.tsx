@@ -152,6 +152,11 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [messages, setMessages]         = useState<Message[]>([]);
   const [input, setInput]               = useState("");
+  const [isUploading, setIsUploading]   = useState(false);
+  const [isRecording, setIsRecording]   = useState(false);
+  const mediaRecorderRef                = useRef<MediaRecorder | null>(null);
+  const imageInputRef                   = useRef<HTMLInputElement | null>(null);
+  const fileInputRef                    = useRef<HTMLInputElement | null>(null);
   const [editingId, setEditingId]       = useState<string | null>(null);
   const [editContent, setEditContent]   = useState("");
   const [menuMsgId, setMenuMsgId]       = useState<string | null>(null);
@@ -531,6 +536,98 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
     } catch {
       setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
     }
+  }
+
+  // ── Attachment upload + send (web) ──────────────────────────────────────────
+  async function uploadToStorage(blob: Blob, kind: string, ext: string, contentType: string) {
+    const path = `${kind}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error } = await supabase.storage.from("chat-media").upload(path, blob, { contentType, upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
+    return { url: data.publicUrl, size: blob.size };
+  }
+
+  async function sendAttachment(att: {
+    attachmentUrl: string; attachmentType: string; attachmentName?: string | null;
+    attachmentSize?: number; attachmentMeta?: { duration?: number };
+  }) {
+    const roomId = activeRoomId;
+    if (!roomId) return;
+    const tempId = `temp_${Date.now()}`;
+    const replyRef = replyTo;
+    const optimistic: Message = {
+      id: tempId, tempId, content: "", senderId: currentUserId,
+      sender: { id: currentUserId, name: currentUserName },
+      createdAt: new Date().toISOString(), readBy: [], status: "sending",
+      replyToId: replyRef?.id ?? null,
+      replyTo: replyRef ? { id: replyRef.id, content: replyRef.content, isDeleted: !!replyRef.isDeleted, sender: replyRef.sender } : null,
+      ...att,
+    };
+    scrollInstantRef.current = false;
+    isAtBottomRef.current = true;
+    setMessages((prev) => [...prev, optimistic]);
+    setReplyTo(null);
+    try {
+      const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "", replyToId: replyRef?.id ?? null, ...att }),
+      });
+      if (res.ok) {
+        const confirmed: Message = await res.json();
+        setMessages((prev) => prev.map((m) => m.tempId === tempId ? confirmed : m));
+        void realtimeChannelRef.current?.send({ type: "broadcast", event: "new_message", payload: confirmed });
+      } else {
+        setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
+      }
+    } catch {
+      setMessages((prev) => prev.map((m) => m.tempId === tempId ? { ...m, status: "failed" } : m));
+    }
+  }
+
+  async function handleFilePick(e: React.ChangeEvent<HTMLInputElement>, kind: "image" | "file") {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const ext = (file.name.split(".").pop() || (kind === "image" ? "jpg" : "bin")).toLowerCase();
+      const { url, size } = await uploadToStorage(file, kind, ext, file.type || "application/octet-stream");
+      await sendAttachment({ attachmentUrl: url, attachmentType: kind, attachmentName: file.name, attachmentSize: size });
+    } catch (err) { console.error(err); alert("Upload failed"); }
+    setIsUploading(false);
+  }
+
+  async function toggleVoiceRecord() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4"
+        : MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+      const mr = new MediaRecorder(stream, { mimeType: mime });
+      const chunks: Blob[] = [];
+      const startedAt = Date.now();
+      mr.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setIsRecording(false);
+        const blob = new Blob(chunks, { type: mime });
+        const duration = Date.now() - startedAt;
+        if (duration < 800) return;
+        setIsUploading(true);
+        try {
+          const ext = mime.includes("mp4") ? "m4a" : "webm";
+          const { url, size } = await uploadToStorage(blob, "voice", ext, mime);
+          await sendAttachment({ attachmentUrl: url, attachmentType: "voice", attachmentName: "voice." + ext, attachmentSize: size, attachmentMeta: { duration } });
+        } catch (err) { console.error(err); alert("Upload failed"); }
+        setIsUploading(false);
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setIsRecording(true);
+    } catch { alert("Microphone access needed"); }
   }
 
   async function saveEdit(msgId: string) {
@@ -1356,7 +1453,28 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                     </div>
                   )}
 
-                  <div className="flex items-end gap-3 px-4 py-3">
+                  {isUploading && (
+                    <p className="text-[11px] px-5 pb-1" style={{ color: "#a78bfa" }}>Uploading…</p>
+                  )}
+                  <div className="flex items-end gap-2 px-4 py-3">
+                    <input ref={imageInputRef} type="file" accept="image/*" hidden onChange={(e) => void handleFilePick(e, "image")} />
+                    <input ref={fileInputRef} type="file" hidden onChange={(e) => void handleFilePick(e, "file")} />
+                    {/* Image */}
+                    <button title="Send image" onClick={() => imageInputRef.current?.click()}
+                      className="w-10 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 hover:bg-white/10"
+                      style={{ color: "rgba(255,255,255,0.55)" }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} style={{ width: 20, height: 20 }}>
+                        <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 15l-5-5L5 21" />
+                      </svg>
+                    </button>
+                    {/* File */}
+                    <button title="Attach file" onClick={() => fileInputRef.current?.click()}
+                      className="w-10 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 hover:bg-white/10"
+                      style={{ color: "rgba(255,255,255,0.55)" }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} style={{ width: 20, height: 20 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                      </svg>
+                    </button>
                     <div className="flex-1 flex items-end gap-2 px-4 py-2.5 rounded-3xl"
                       style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }}>
                       <textarea ref={inputRef} value={input}
@@ -1366,14 +1484,27 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                         className="flex-1 bg-transparent text-sm text-white outline-none resize-none"
                         style={{ maxHeight: 120, scrollbarWidth: "none", lineHeight: "1.5" }} />
                     </div>
-                    <button onClick={() => void sendMessage()}
-                      disabled={!input.trim()}
-                      className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 disabled:opacity-40 disabled:scale-100"
-                      style={{ background: input.trim() ? "linear-gradient(135deg,#7c3aed,#4f46e5)" : "rgba(255,255,255,0.08)" }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} style={{ width: 18, height: 18, marginLeft: 2 }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
-                      </svg>
-                    </button>
+                    {input.trim() ? (
+                      <button onClick={() => void sendMessage()}
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all hover:scale-105"
+                        style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.2} style={{ width: 18, height: 18, marginLeft: 2 }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    ) : (
+                      <button title={isRecording ? "Stop & send" : "Record voice"} onClick={() => void toggleVoiceRecord()}
+                        className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 transition-all hover:scale-105"
+                        style={{ background: isRecording ? "#ef4444" : "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+                        {isRecording ? (
+                          <svg viewBox="0 0 24 24" fill="white" style={{ width: 16, height: 16 }}><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} style={{ width: 18, height: 18 }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 01-14 0v-2M12 19v4" />
+                          </svg>
+                        )}
+                      </button>
+                    )}
                   </div>
                   <p className="text-[10px] pb-2 px-5" style={{ color: "rgba(255,255,255,0.18)" }}>
                     Enter to send · Shift+Enter for new line
