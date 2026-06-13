@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 
 export async function DELETE(
@@ -12,9 +12,7 @@ export async function DELETE(
   }
 ) {
   const session =
-    await getServerSession(
-      authOptions
-    );
+    await getMobileOrWebSession(req, authOptions);
 
   if (
     (session?.user as any)

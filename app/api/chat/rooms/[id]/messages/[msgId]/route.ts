@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/get-session-user-id";
@@ -11,7 +11,7 @@ type Params = { params: Promise<{ id: string; msgId: string }> };
 
 // ── PATCH — edit message OR toggle reaction ───────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const session = await getServerSession(authOptions);
+  const session = await getMobileOrWebSession(req, authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = await getSessionUserId(session);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -66,7 +66,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // ── DELETE ────────────────────────────────────────────────────────────────────
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const session = await getServerSession(authOptions);
+  const session = await getMobileOrWebSession(req, authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = await getSessionUserId(session);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

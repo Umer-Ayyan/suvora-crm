@@ -1,12 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 
 // POST /api/announcements — admin sends announcement to all users
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getMobileOrWebSession(req, authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if ((session.user as any).role !== "admin")
       return NextResponse.json({ error: "Admin only" }, { status: 403 });

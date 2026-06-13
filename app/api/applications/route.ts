@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 // ── POST — public, no auth ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 // ── GET — admin/manager only ──────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getMobileOrWebSession(req, authOptions);
     if (!["admin", "manager"].includes((session?.user as any)?.role)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 
 function getWorkingDaysInMonth(year: number, month: number): number {
@@ -16,7 +16,7 @@ function getWorkingDaysInMonth(year: number, month: number): number {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getMobileOrWebSession(req, authOptions);
     const role = (session?.user as any)?.role;
     const generatorEmployeeId = (session?.user as any)?.employeeId;
 

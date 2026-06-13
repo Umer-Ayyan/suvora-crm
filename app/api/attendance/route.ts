@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 
 // Attendance rules — Night shift PKT (UTC+5): 10:00 PM – 6:00 AM
@@ -47,7 +47,7 @@ function getAttendanceStatus(checkInUTC: Date): { status: string; deductionPct: 
 // GET — fetch attendance records
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getMobileOrWebSession(req, authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = (session.user as any).role;
@@ -90,9 +90,9 @@ export async function GET(req: NextRequest) {
 }
 
 // POST — employee check-in
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getMobileOrWebSession(req, authOptions);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const employeeId = (session.user as any).employeeId;

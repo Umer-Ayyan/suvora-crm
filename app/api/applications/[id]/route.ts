@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { getSessionUserId } from "@/lib/get-session-user-id";
 
@@ -8,7 +8,7 @@ type Params = { params: Promise<{ id: string }> };
 
 // ── PATCH — update status / notes ────────────────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const session = await getServerSession(authOptions);
+  const session = await getMobileOrWebSession(req, authOptions);
   if (!["admin", "manager"].includes((session?.user as any)?.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -25,8 +25,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 // ── GET — download CV (base64) ────────────────────────────────────────────────
-export async function GET(_req: NextRequest, { params }: Params) {
-  const session = await getServerSession(authOptions);
+export async function GET(req: NextRequest, { params }: Params) {
+  const session = await getMobileOrWebSession(req, authOptions);
   if (!["admin", "manager"].includes((session?.user as any)?.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
@@ -40,8 +40,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 // ── DELETE ────────────────────────────────────────────────────────────────────
-export async function DELETE(_req: NextRequest, { params }: Params) {
-  const session = await getServerSession(authOptions);
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const session = await getMobileOrWebSession(req, authOptions);
   if ((session?.user as any)?.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }

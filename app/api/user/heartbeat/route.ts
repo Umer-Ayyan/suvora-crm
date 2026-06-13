@@ -1,11 +1,12 @@
-import { getServerSession } from "next-auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/get-session-user-id";
-import { NextResponse } from "next/server";
 
-export async function POST() {
-  const session = await getServerSession(authOptions);
+
+export async function POST(req: NextRequest) {
+  const session = await getMobileOrWebSession(req, authOptions);
   if (!session) return NextResponse.json({ ok: false }, { status: 401 });
   const userId = await getSessionUserId(session);
   if (!userId) return NextResponse.json({ ok: false }, { status: 401 });

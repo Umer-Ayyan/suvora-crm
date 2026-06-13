@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 
 export async function POST(
@@ -13,9 +13,7 @@ export async function POST(
 ) {
   try {
     const session =
-      await getServerSession(
-        authOptions
-      );
+      await getMobileOrWebSession(req, authOptions);
 
     if (!session) {
       return NextResponse.json(
