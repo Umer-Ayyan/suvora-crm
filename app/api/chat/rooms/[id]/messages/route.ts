@@ -49,7 +49,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = await getSessionUserId(session);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = (session.user as any).role === "admin";
   const { id } = await params;
 
   const { content, replyToId, attachmentUrl, attachmentType, attachmentName, attachmentSize, attachmentMeta } = await req.json();
@@ -57,16 +56,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!content?.trim() && !hasAttachment)
     return NextResponse.json({ error: "Empty message" }, { status: 400 });
 
-  if (!isAdmin) {
-    const member = await prisma.chatRoomMember.findUnique({ where: { roomId_userId: { roomId: id, userId } } });
-    if (!member) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  } else {
-    await prisma.chatRoomMember.upsert({
-      where: { roomId_userId: { roomId: id, userId } },
-      update: { isHidden: false },
-      create: { roomId: id, userId, isHidden: false },
-    });
-  }
+  // Sending is only allowed for actual members of the room. Admins can READ
+  // every room (monitor mode) but must NOT be able to post into a conversation
+  // they aren't part of — and we never auto-join them as a member.
+  const member = await prisma.chatRoomMember.findUnique({ where: { roomId_userId: { roomId: id, userId } } });
+  if (!member)
+    return NextResponse.json(
+      { error: "You are viewing this chat in monitor mode and cannot send messages." },
+      { status: 403 }
+    );
 
   const message = await prisma.chatMessage.create({
     data: {

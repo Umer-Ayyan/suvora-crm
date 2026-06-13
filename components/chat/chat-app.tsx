@@ -208,6 +208,10 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
   const longPressTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) ?? null;
+  // Admin can READ any room (monitor mode) but may only send in rooms they
+  // actually belong to. Non-members see a view-only banner instead of input.
+  const activeReadOnly =
+    !!activeRoom && !activeRoom.members.some((m) => m.user.id === currentUserId);
 
   // ── Load rooms (debounced) ────────────────────────────────────────────────
   const loadRooms = useCallback(async () => {
@@ -764,7 +768,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
   // ── Mobile: Long press ────────────────────────────────────────────────────
   function onMsgTouchStart(e: React.TouchEvent, msg: Message) {
-    if (msg.isDeleted || msg.status === "sending") return;
+    if (activeReadOnly || msg.isDeleted || msg.status === "sending") return;
     longPressTimerRef.current = setTimeout(() => {
       navigator.vibrate?.(50);
       setLongPressMsg(msg);
@@ -1197,7 +1201,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
                               <div className="relative group/msg">
                                 {/* ── Action buttons on hover (desktop only) ── */}
-                                {!isDeleted && !isSending && !isEditing && (
+                                {!activeReadOnly && !isDeleted && !isSending && !isEditing && (
                                   <div className={`absolute top-1 hidden md:flex items-center gap-1 z-10 opacity-0 group-hover/msg:opacity-100 transition-opacity ${isMe ? "-left-20" : "-right-20"}`}>
                                     {/* Reply */}
                                     <button
@@ -1388,7 +1392,7 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                                     const isMine  = users.includes(currentUserId);
                                     return (
                                       <button key={emoji}
-                                        onClick={(e) => { e.stopPropagation(); void reactToMessage(msg.id, emoji); }}
+                                        onClick={(e) => { e.stopPropagation(); if (!activeReadOnly) void reactToMessage(msg.id, emoji); }}
                                         className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all hover:scale-105"
                                         style={{
                                           background: isMine ? "rgba(124,58,237,0.35)" : "rgba(255,255,255,0.1)",
@@ -1441,6 +1445,15 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
 
                 {/* ── Input area ── */}
                 <div className="flex-shrink-0" style={{ background: "rgba(15,15,28,0.95)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  {activeReadOnly ? (
+                  <div className="flex items-center justify-center gap-2 px-4 py-4" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} style={{ width: 18, height: 18 }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" />
+                    </svg>
+                    <span className="text-xs font-medium">Monitor mode — view only</span>
+                  </div>
+                  ) : (
+                  <>
                   {/* Reply preview */}
                   {replyTo && (
                     <div className="flex items-center gap-3 px-4 pt-3 pb-1">
@@ -1517,6 +1530,8 @@ export default function ChatApp({ currentUserId, currentUserName, isAdmin, emplo
                   <p className="text-[10px] pb-2 px-5" style={{ color: "rgba(255,255,255,0.18)" }}>
                     Enter to send · Shift+Enter for new line
                   </p>
+                  </>
+                  )}
                 </div>
               </>
             );
