@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { notify } from "@/lib/push";
@@ -43,13 +43,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       task.assignedToId &&
       task.assignedToId !== prev?.assignedToId
     ) {
-      await notify(task.assignedToId, {
+      after(() => notify(task.assignedToId!, {
         title: "New Task Assigned",
         message: `You have been assigned: "${task.title}"`,
         type: "info",
         link: "/tasks",
         data: { type: "task", taskId: task.id },
-      });
+      }));
     }
 
     return NextResponse.json(task);

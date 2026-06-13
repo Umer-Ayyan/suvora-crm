@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { notify } from "@/lib/push";
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const users = await prisma.user.findMany({ where, select: { id: true } });
     const userIds = users.map((u) => u.id);
 
-    await notify(userIds, { title, message, type: "announcement", link, data: { type: "broadcast" } });
+    after(() => notify(userIds, { title, message, type: "announcement", link, data: { type: "broadcast" } }));
 
     return NextResponse.json({ ok: true, sentTo: userIds.length });
   } catch (e) {

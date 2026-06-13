@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { notify } from "@/lib/push";
@@ -81,13 +81,13 @@ export async function POST(req: NextRequest) {
     });
 
     if (assignedToId) {
-      await notify(assignedToId, {
+      after(() => notify(assignedToId, {
         title: "New Task Assigned",
         message: `You have been assigned: "${title.trim()}"`,
         type: "info",
         link: "/tasks",
         data: { type: "task", taskId: task.id },
-      });
+      }));
     }
 
     await prisma.activityLog.create({

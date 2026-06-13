@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { sendExpoPush } from "@/lib/push";
@@ -35,11 +35,11 @@ export async function POST(req: NextRequest) {
       })),
     });
 
-    // Push to all recipients (in-app rows already created above).
-    await sendExpoPush(
+    // Push to all recipients (in-app rows already created above) — after response.
+    after(() => sendExpoPush(
       users.map((u) => u.id),
       { title, body: message, data: { type: "announcement", link: "/notifications" } }
-    );
+    ));
 
     // Log activity
     const admin = await prisma.user.findUnique({

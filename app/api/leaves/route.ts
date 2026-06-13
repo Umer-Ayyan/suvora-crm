@@ -2,7 +2,7 @@ import { getMobileOrWebSession } from "@/lib/mobile-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notify } from "@/lib/push";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 
 export async function GET(req: NextRequest) {
   const session = await getMobileOrWebSession(req, authOptions);
@@ -58,25 +58,27 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Notify all admins & managers of the new request.
-  try {
-    const reviewers = await prisma.user.findMany({
-      where: { role: { in: ["admin", "manager"] } },
-      select: { id: true },
-    });
-    await notify(
-      reviewers.map((r) => r.id),
-      {
-        title: "New Leave Request",
-        message: `${leave.user?.name || "An employee"} requested ${days} day(s) ${type} leave`,
-        type: "info",
-        link: "/leaves",
-        data: { type: "leave", leaveId: leave.id },
-      }
-    );
-  } catch (err) {
-    console.error("[leave push]", err);
-  }
+  // Notify all admins & managers of the new request (after response).
+  after(async () => {
+    try {
+      const reviewers = await prisma.user.findMany({
+        where: { role: { in: ["admin", "manager"] } },
+        select: { id: true },
+      });
+      await notify(
+        reviewers.map((r) => r.id),
+        {
+          title: "New Leave Request",
+          message: `${leave.user?.name || "An employee"} requested ${days} day(s) ${type} leave`,
+          type: "info",
+          link: "/leaves",
+          data: { type: "leave", leaveId: leave.id },
+        }
+      );
+    } catch (err) {
+      console.error("[leave push]", err);
+    }
+  });
 
   return NextResponse.json(leave, { status: 201 });
 }
