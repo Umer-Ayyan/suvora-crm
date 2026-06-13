@@ -48,7 +48,10 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const session = await getMobileOrWebSession(req, authOptions);
-    if (!["admin", "manager"].includes((session?.user as any)?.role)) {
+    const su = session?.user as any;
+    const canAccess =
+      ["admin", "manager"].includes(su?.role) || su?.permissions?.applications === true;
+    if (!canAccess) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 

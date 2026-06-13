@@ -175,6 +175,8 @@ export default function ApplicationsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const role = (session?.user as any)?.role;
+  const permissions = (session?.user as any)?.permissions as Record<string, boolean> | undefined;
+  const canAccess = ["admin", "manager"].includes(role) || permissions?.applications === true;
 
   const [apps, setApps]           = useState<Application[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -190,8 +192,8 @@ export default function ApplicationsPage() {
   // Auth guard
   useEffect(() => {
     if (status === "loading") return;
-    if (!["admin", "manager"].includes(role)) router.replace("/");
-  }, [role, status, router]);
+    if (!canAccess) router.replace("/");
+  }, [canAccess, status, router]);
 
   const fetchApps = useCallback(async (tab: string) => {
     setLoading(true);
@@ -201,7 +203,7 @@ export default function ApplicationsPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { if (role && ["admin", "manager"].includes(role)) fetchApps(activeTab); }, [activeTab, fetchApps, role]);
+  useEffect(() => { if (canAccess) fetchApps(activeTab); }, [activeTab, fetchApps, canAccess]);
   useEffect(() => { setNotes(selected?.notes ?? ""); }, [selected]);
 
   async function updateStatus(id: string, newStatus: string) {

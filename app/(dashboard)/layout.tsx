@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { href: "/goals",      label: "Goals",       permKey: "goals",       icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
   { href: "/chat",       label: "Team Chat",   permKey: undefined,     icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
   { href: "/leaves",     label: "Leaves",      permKey: undefined,     icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+  { href: "/applications", label: "Applications", permKey: "applications", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
   { href: "/security",   label: "Security",    permKey: undefined,     icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" },
   { href: "/get-app",    label: "Get the App", permKey: undefined,     icon: "M12 18h.01M8 21h8a1 1 0 001-1V4a1 1 0 00-1-1H8a1 1 0 00-1 1v16a1 1 0 001 1z" },
 ];
@@ -109,6 +110,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Filter main nav items by permissions
   const isSalesDept = department.toLowerCase().includes("sales");
   const visibleNavItems = NAV_ITEMS.filter((item) => {
+    // Applications shows in the privileged section for admin/manager — avoid a
+    // duplicate in the main nav; custom roles see it via the permission below.
+    if (item.href === "/applications" && (role === "admin" || role === "manager")) return false;
     if (role === "admin" || role === "manager") return true; // admin/manager see everything
     // Leads: only sales department employees
     if (item.href === "/leads" && role === "employee" && !isSalesDept) return false;

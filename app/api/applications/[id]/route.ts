@@ -9,7 +9,8 @@ type Params = { params: Promise<{ id: string }> };
 // ── PATCH — update status / notes ────────────────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Params) {
   const session = await getMobileOrWebSession(req, authOptions);
-  if (!["admin", "manager"].includes((session?.user as any)?.role)) {
+  const su = session?.user as any;
+  if (!(["admin", "manager"].includes(su?.role) || su?.permissions?.applications === true)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
   const userId = await getSessionUserId(session);
@@ -27,7 +28,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 // ── GET — download CV (base64) ────────────────────────────────────────────────
 export async function GET(req: NextRequest, { params }: Params) {
   const session = await getMobileOrWebSession(req, authOptions);
-  if (!["admin", "manager"].includes((session?.user as any)?.role)) {
+  const su = session?.user as any;
+  if (!(["admin", "manager"].includes(su?.role) || su?.permissions?.applications === true)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
   const { id } = await params;
